@@ -1,0 +1,76 @@
+# version: '3.8' # Removed obsolete version attribute
+
+services:
+  # Redis service for Claim Validator
+  claim-validator-redis:
+    image: redis:7-alpine
+    container_name: claim-validator-redis
+    restart: unless-stopped
+    ports:
+      - "6380:6379"  # Use different port to avoid conflict with Firecrawl Redis
+    volumes:
+      - claim_validator_redis_data:/data
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-claimvalidator123}
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 30s
+      timeout: 3s
+      retries: 5
+    networks:
+      - claim-validator-network
+
+  # Claim Validator API
+  api:
+    build: .
+    container_name: claim-validator-api
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - REDIS_URL=redis://claim-validator-redis:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-claimvalidator123}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GOOGLE_SEARCH_API_KEY=${GOOGLE_SEARCH_API_KEY}
+      - GOOGLE_SEARCH_ENGINE_ID=${GOOGLE_SEARCH_ENGINE_ID}
+      - FIRECRAWL_API_KEY=${FIRECRAWL_API_KEY}
+      - FIRECRAWL_API_URL=${FIRECRAWL_API_URL:-http://host.docker.internal:3002}
+    depends_on:
+      claim-validator-redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - claim-validator-network
+    volumes:
+      - ./logs:/app/logs
+
+  # Nginx reverse proxy (optional)
+  nginx:
+    image: nginx:alpine
+    container_name: claim-validator-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - ./public:/app/public:ro
+    depends_on:
+      - api
+    networks:
+      - claim-validator-network
+
+volumes:
+  claim_validator_redis_data:
+    driver: local
+
+networks:
+  claim-validator-network:
+    driver: bridge

@@ -1,0 +1,58 @@
+# version: '3.8' # Removed obsolete version attribute
+
+services:
+  # Redis service for development
+  claim-validator-redis:
+    image: redis:7-alpine
+    container_name: claim-validator-redis-dev
+    restart: unless-stopped
+    ports:
+      - "6380:6379"  # Use different port to avoid conflict with Firecrawl Redis
+    volumes:
+      - claim_validator_redis_dev_data:/data
+    command: redis-server --appendonly yes --requirepass claimvalidator123
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 30s
+      timeout: 3s
+      retries: 5
+    networks:
+      - claim-validator-dev-network
+
+  # Development API (runs locally, connects to containerized Redis)
+  api-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: claim-validator-api-dev
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - REDIS_URL=redis://claim-validator-redis:6379
+      - REDIS_PASSWORD=claimvalidator123
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GOOGLE_SEARCH_API_KEY=${GOOGLE_SEARCH_API_KEY}
+      - GOOGLE_SEARCH_ENGINE_ID=${GOOGLE_SEARCH_ENGINE_ID}
+      - FIRECRAWL_API_KEY=${FIRECRAWL_API_KEY}
+      - FIRECRAWL_API_URL=${FIRECRAWL_API_URL:-http://host.docker.internal:3002}
+    depends_on:
+      claim-validator-redis:
+        condition: service_healthy
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - ./logs:/app/logs
+    networks:
+      - claim-validator-dev-network
+    command: npm run dev
+
+volumes:
+  claim_validator_redis_dev_data:
+    driver: local
+
+networks:
+  claim-validator-dev-network:
+    driver: bridge

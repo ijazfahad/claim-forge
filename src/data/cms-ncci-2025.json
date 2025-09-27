@@ -1,0 +1,168 @@
+{
+  "version": "2025.1",
+  "last_updated": "2024-12-01",
+  "cpt_codes": {
+    "99230": {
+      "description": "Hospital care, per day, for evaluation and management",
+      "category": "E/M",
+      "bundling_rules": {
+        "bundled_with": [],
+        "bundles": [],
+        "modifier_requirements": ["25"],
+        "frequency_limits": {
+          "per_day": 1,
+          "per_episode": 1
+        }
+      },
+      "prior_auth": {
+        "required": false,
+        "conditions": []
+      },
+      "valid_icd10": [
+        "Z00.00", "Z00.01", "Z00.121", "Z00.129",
+        "M54.5", "M54.6", "M54.9",
+        "I48.91", "I48.92"
+      ]
+    },
+    "64636": {
+      "description": "Destruction by neurolytic agent, transforaminal epidural; lumbar or sacral, single level",
+      "category": "Pain Management",
+      "bundling_rules": {
+        "bundled_with": ["64483", "64484"],
+        "bundles": [],
+        "modifier_requirements": ["59"],
+        "frequency_limits": {
+          "per_day": 1,
+          "per_year": 4
+        }
+      },
+      "prior_auth": {
+        "required": true,
+        "conditions": [
+          "Failed conservative treatment",
+          "Positive diagnostic block",
+          "Documented pain relief >50%"
+        ]
+      },
+      "valid_icd10": [
+        "M54.5", "M54.6", "M54.16", "M54.17",
+        "M48.06", "M48.07", "M48.08"
+      ]
+    },
+    "64483": {
+      "description": "Injection, anesthetic agent; transforaminal epidural, with imaging guidance, lumbar or sacral, single level",
+      "category": "Pain Management",
+      "bundling_rules": {
+        "bundled_with": ["64636"],
+        "bundles": [],
+        "modifier_requirements": ["59"],
+        "frequency_limits": {
+          "per_day": 1,
+          "per_year": 6
+        }
+      },
+      "prior_auth": {
+        "required": true,
+        "conditions": [
+          "Failed conservative treatment",
+          "Documented pain relief >50%"
+        ]
+      },
+      "valid_icd10": [
+        "M54.5", "M54.6", "M54.16", "M54.17",
+        "M48.06", "M48.07", "M48.08"
+      ]
+    },
+    "99214": {
+      "description": "Office or other outpatient visit for the evaluation and management of an established patient",
+      "category": "E/M",
+      "bundling_rules": {
+        "bundled_with": [],
+        "bundles": [],
+        "modifier_requirements": ["25"],
+        "frequency_limits": {
+          "per_day": 1,
+          "per_episode": 1
+        }
+      },
+      "prior_auth": {
+        "required": false,
+        "conditions": []
+      },
+      "valid_icd10": [
+        "Z00.00", "Z00.01", "Z00.121", "Z00.129",
+        "M54.5", "M54.6", "M54.9",
+        "I48.91", "I48.92"
+      ]
+    },
+    "93000": {
+      "description": "Electrocardiogram, routine ECG with at least 12 leads; with interpretation and report",
+      "category": "Cardiology",
+      "bundling_rules": {
+        "bundled_with": [],
+        "bundles": [],
+        "modifier_requirements": [],
+        "frequency_limits": {
+          "per_day": 1,
+          "per_year": 12
+        }
+      },
+      "prior_auth": {
+        "required": false,
+        "conditions": []
+      },
+      "valid_icd10": [
+        "I48.91", "I48.92", "I25.10", "I25.9",
+        "Z00.00", "Z00.01"
+      ]
+    }
+  },
+  "bundling_edits": {
+    "64483_64636": {
+      "primary": "64483",
+      "secondary": "64636",
+      "modifier_required": "59",
+      "description": "Diagnostic and therapeutic procedures on same day"
+    },
+    "99214_64483": {
+      "primary": "99214",
+      "secondary": "64483",
+      "modifier_required": "25",
+      "description": "E/M service with procedure on same day"
+    }
+  },
+  "modifier_rules": {
+    "25": {
+      "description": "Significant, separately identifiable evaluation and management service by the same physician on the same day",
+      "usage": "E/M services with procedures"
+    },
+    "59": {
+      "description": "Distinct procedural service",
+      "usage": "Separate procedures performed on same day"
+    },
+    "LT": {
+      "description": "Left side",
+      "usage": "Bilateral procedures"
+    },
+    "RT": {
+      "description": "Right side",
+      "usage": "Bilateral procedures"
+    }
+  },
+  "frequency_limits": {
+    "global_periods": {
+      "64483": 0,
+      "64636": 0,
+      "99214": 0,
+      "99230": 0,
+      "93000": 0
+    },
+    "annual_limits": {
+      "64483": 6,
+      "64636": 4,
+      "99214": 365,
+      "99230": 365,
+      "93000": 12
+    }
+  }
+}

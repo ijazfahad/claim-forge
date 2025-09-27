@@ -1,0 +1,859 @@
+{
+  "name": "ai-claim-validator-decider-heuristic-working",
+  "nodes": [
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are Planner Agent. Generate a short, targeted checklist of validation questions for the claim using ONLY the payload below. Do NOT answer the questions.\n\nPRIMARY GOALS\n1) Infer {specialty} and {subspecialty} from CPT/ICD/POS/summary.\n2) Create 2–3 questions per tier:\n   - type:\"basic\"        → payer/claim mechanics (PA, eligibility, POS/modifiers, NCCI edits, frequency, plan rules).\n   - type:\"specialty\"    → rules typical for the inferred specialty.\n   - type:\"subspecialty\" → fine-grained checks specific to the procedure/subspecialty.\n3) Each question must be atomic, neutral (no presupposed “yes”), and ≤160 chars.\n\nFOR EACH QUESTION INCLUDE\n- accept_if: 2–5 concrete evidence checks (what policy text would count as satisfying the question).\n- search_queries: 1–2 SHORT verification hints (strings). These are NOT executed; they are for future human or automated verification.\n  • If payload.domains exists, prefix with site:<domain>. Otherwise, use payer name as a keyword (no quotes).\n  • Keep minimal and specific to THIS question; no generic catch-alls.\n- risk_flags: object with booleans for { \"PA\", \"POS\", \"NCCI\", \"Modifiers\", \"Frequency\", \"Diagnosis\", \"StateSpecific\", \"LOBSpecific\", \"Thresholds\" } indicating which risk categories the question targets.\n\nMETA\nAdd:\n- specialty, subspecialty, rationale (why you inferred them),\n- derived: echo cpt_codes, icd10_codes, place_of_service, member_plan_type, state.\n\nSTRICT RULES\n- Use ONLY the provided payload; no external knowledge or URLs beyond forming terse verification hints.\n- Do NOT answer the questions; planning only.\n- Avoid duplicated question text. Keep search_queries distinct across questions when feasible.\n- JSON ONLY. No prose/Markdown. No trailing commas. Start numbering at 1.\n\nOUTPUT SHAPE\n{\n  \"questions\": [\n    {\n      \"n\": 1,\n      \"type\": \"basic|specialty|subspecialty\",\n      \"q\": \"string <=160 chars, atomic, neutral\",\n      \"accept_if\": [\"string\", \"string\"],\n      \"search_queries\": [\"site:domain.tld ...\"],      // 0–2 items allowed\n      \"risk_flags\": { \"PA\": false, \"POS\": false, \"NCCI\": false, \"Modifiers\": false, \"Frequency\": false, \"Diagnosis\": false, \"StateSpecific\": false, \"LOBSpecific\": false, \"Thresholds\": false }\n    }\n  ],\n  \"meta\": {\n    \"specialty\": \"string\",\n    \"subspecialty\": \"string\",\n    \"rationale\": \"string\",\n    \"derived\": {\n      \"cpt_codes\": [\"string\"],\n      \"icd10_codes\": [\"string\"],\n      \"place_of_service\": \"string\",\n      \"member_plan_type\": \"string\",\n      \"state\": \"string\"\n    }\n  }\n}\n\nPAYLOAD = {{ JSON.stringify($json.payload) }}\n",
+        "hasOutputParser": true,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        -64,
+        -704
+      ],
+      "id": "c21b8368-5cf1-41a7-88be-b88403c8d9c6",
+      "name": "Planner AI Agent"
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"questions\": [\n    {\n      \"n\": 1,\n      \"type\": \"basic|specialty|subspecialty\",\n      \"q\": \"string\",\n      \"accept_if\": [\"string\", \"string\"],\n      \"search_queries\": [\"site:domain.tld ...\"], \n      \"risk_flags\": { \"PA\": false, \"POS\": false, \"NCCI\": false, \"Modifiers\": false, \"Frequency\": false, \"Diagnosis\": false, \"StateSpecific\": false, \"LOBSpecific\": false, \"Thresholds\": false }\n    }\n  ],\n  \"meta\": {\n    \"specialty\": \"string\",\n    \"subspecialty\": \"string\",\n    \"rationale\": \"string\",\n    \"derived\": {\n      \"cpt_codes\": [\"string\"],\n      \"icd10_codes\": [\"string\"],\n      \"place_of_service\": \"string\",\n      \"member_plan_type\": \"string\",\n      \"state\": \"string\"\n    }\n  }\n}",
+        "autoFix": true
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        96,
+        -496
+      ],
+      "id": "d6c5aa75-91b9-498a-95ff-33936d05c370",
+      "name": "Structured Output Parser2"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-3.5-turbo",
+          "mode": "list",
+          "cachedResultName": "gpt-3.5-turbo"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        96,
+        -352
+      ],
+      "id": "56772e79-c0fe-46be-b646-eb828caf59a7",
+      "name": "OpenAI Chat Model2",
+      "credentials": {
+        "openAiApi": {
+          "id": "yBut9f2eV7vGo1Td",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.toolThink",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        -496
+      ],
+      "id": "a44b3e94-eb3a-4431-838d-55a45d555eac",
+      "name": "Think"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4.1-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4.1-mini"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        -112,
+        -496
+      ],
+      "id": "61b90b92-4651-43f5-9fa1-49c83c78279f",
+      "name": "gpt 4.1-mini",
+      "credentials": {
+        "openAiApi": {
+          "id": "yBut9f2eV7vGo1Td",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -576,
+        -704
+      ],
+      "id": "22152943-c967-4775-9dd4-6fc13560fb5b",
+      "name": "Payload",
+      "webhookId": "e9de885d-02b7-458c-9e77-bbb20fff4cc6"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Input: items[0].json has:\n// {\n//   output: { questions: [...], meta: {...} },\n//   payload: { payer, cpt_codes, icd10_codes, place_of_service, member_plan_type, state, note_summary }\n// }\n\nconst plan = items[0].json.output || items[0].json;\nconst payload = $node[\"Code - Payload\"]?.json.payload ?? {}\nconsole.log(payload);\n\nconst claim_context = {\n  payer: payload.payer,\n  cpt_codes: payload.cpt_codes || [],\n  icd10_codes: payload.icd10_codes || [],\n  place_of_service: payload.place_of_service || \"\",\n  member_plan_type: payload.member_plan_type || \"\",\n  state: payload.state || \"\",\n  note_summary: (payload.note_summary || \"\").slice(0, 500) // keep tokens down\n};\n\nconst MAX_TRIES = 2; // total attempts per question (1 initial + 1 retry). Raise to 3 if needed.\n\nreturn (plan?.questions || []).map(q => ({\n  json: {\n    question: q,\n    remaining_queries: (q.search_queries || []).map(s => s.trim()).filter(Boolean),\n    used_queries: [],\n    tries: 0,\n    max_tries: MAX_TRIES,\n    meta: plan.meta,\n    claim_context\n  }\n}));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        272,
+        -704
+      ],
+      "id": "b0a5d8e7-9bdd-4003-9a1d-2a89317923b6",
+      "name": "Code - Split + ctx"
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code node — parse chatInput string into { payload: {...} }\n\nreturn items.map(item => {\n  let raw = item.json.chatInput;\n\n  if (typeof raw !== 'string') {\n    throw new Error('chatInput is not a string on this item.');\n  }\n\n  let s = raw.trim();\n\n  // Strip code fences if present\n  if (s.startsWith('```')) {\n    s = s.replace(/^```(?:json)?\\s*/i, '').replace(/```$/i, '').trim();\n  }\n\n  // If it's a fragment like `\"payload\": {...}`, wrap to make valid JSON\n  if (!s.startsWith('{')) {\n    s = `{${s}}`;\n  }\n\n  // Be forgiving about trailing commas\n  s = s.replace(/,\\s*([}\\]])/g, '$1');\n\n  let obj;\n  try {\n    obj = JSON.parse(s);\n    // If it was double-encoded, parse again\n    if (typeof obj === 'string' && obj.trim().startsWith('{')) {\n      obj = JSON.parse(obj);\n    }\n  } catch (e) {\n    throw new Error('Failed to parse chatInput: ' + e.message);\n  }\n\n  const payload = obj?.payload ?? obj;\n  if (!payload || typeof payload !== 'object') {\n    throw new Error('Parsed object does not contain a payload object.');\n  }\n\n  return { json: { payload } };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -320,
+        -704
+      ],
+      "id": "34b947a0-25c1-4f36-98bc-686c91b3451a",
+      "name": "Code - Payload"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.toolThink",
+      "typeVersion": 1.1,
+      "position": [
+        672,
+        -496
+      ],
+      "id": "bce4d175-1161-4b2f-8109-d72837445e23",
+      "name": "Think4"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are Research Agent (Model-Only, Balanced, Decision-Grade).\n\nINPUT\n- question: {{ JSON.stringify($json.question) }}          // has: n, type, q, accept_if?[]\n- claim_context: {{ JSON.stringify($json.claim_context) }} // payer, state, member_plan_type, cpt_codes, icd10_codes, place_of_service, note_summary\n- (optional) meta: {{ JSON.stringify($json.meta) }}\n\nMISSION\nProvide a concise, decision-oriented hypothesis for the question using domain knowledge only (no tools). Be balanced:\n- Mark “ok” when the stance is supported by widely observed cross-payer norms and you’re reasonably confident (medium/high).\n- Mark “insufficient” when uncertainty is material or details are likely payer/state/LOB-specific.\n\nWHAT TO WRITE\n1) Stance: start summary with exactly one of — “Likely yes—”, “Likely no—”, or “Unclear—”.\n2) Reasoning: 1–2 short sentences based on broad industry norms; tailor to claim_context (payer name, state, LOB, CPT/ICD/POS, note summary) without asserting payer-specific rules.\n3) If question.accept_if exists, pick exactly ONE line that best aligns with your stance; if none fit, use \"\" (empty string).\n4) Provide 0–3 short, practical next checks (things a verifier could do later).\n\nCONFIDENCE & STATUS (Balanced Gate)\n- Default confidence = \"low\".\n- Upgrade to \"medium\" when:\n  • The stance is consistent with common industry norms for the topic (e.g., typical utilization review patterns, standard coding relationships), AND\n  • You do not rely on multiple unverified payer/state/LOB assumptions.\n- Use \"high\" only for definitional, near-universal truths (stable coding/claims conventions).\n- If confidence is \"medium\" or \"high\" ⇒ status = \"ok\".\n- If confidence is \"low\" OR stance is “Unclear—” ⇒ status = \"insufficient\".\n\nTopic hints (not hard rules):\n- BASIC (PA, POS, frequency, edits/modifiers): medium is acceptable when driven by broad norms; keep low if plan/state specific.\n- SPECIALTY (common clinical prerequisites/patterns): often medium unless clearly plan/state specific.\n- SUBSPECIALTY (fine-grained, site/level nuances): usually low unless definitional.\n\nFORMAT (ALL STRINGS; JSON ARRAY with exactly one object)\n- No numbers/booleans/nulls; arrays are arrays of strings.\n- No extra keys, no markdown, no code fences, no trailing commas.\n\nOUTPUT — JSON ARRAY ONLY:\n[\n  {\n    \"n\": \"string\",                                // echo question.n (e.g., \"1\")\n    \"type\": \"basic|specialty|subspecialty\",       // echo from input\n    \"q\": \"string\",                                // echo from input\n    \"status\": \"ok|insufficient\",\n    \"model_only\": \"true\",\n    \"summary\": \"Likely yes—... / Likely no—... / Unclear—... (1–2 short sentences)\",\n    \"likely_accept_if\": \"string\",                 // ONE line from accept_if if available; else \"\"\n    \"confidence\": \"low|medium|high\",\n    \"disclaimers\": \"Plan, state, and line-of-business rules vary; verify in official policy.\",\n    \"next_checks\": [\"string\", \"string\"]          // 0–3 items\n  }\n]\n\nSTYLE\n- Answer-first; concise; no policy names/numbers, URLs, or quotes.\n- Tools are unavailable; domain knowledge only.\n- If in doubt, prefer “Unclear—” + low confidence ⇒ “insufficient”.\n",
+        "hasOutputParser": true,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        560,
+        -704
+      ],
+      "id": "1def9fe5-706a-4d3e-b7e7-4804746e23fb",
+      "name": "Research AI Agent"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "01f7c017-1384-4554-81a1-324b9c8be405",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "ok",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1168,
+        -880
+      ],
+      "id": "9b193321-00b8-4017-9335-2a1cd089edf3",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Shape Evidence — unify research success, model-only, and insufficient into one payload for Evaluate\n\nfunction s(x){ return (x == null ? \"\" : String(x)).trim(); }\nfunction clampSnippets(snips) {\n  if (!Array.isArray(snips)) return [];\n  return snips\n    .map(sn => {\n      const text = s(sn?.text).slice(0, 300);\n      const where = s(sn?.where);\n      return text ? { text, where } : null;\n    })\n    .filter(Boolean);\n}\nfunction sanitizeConfidence(c) {\n  const v = s(c).toLowerCase();\n  if (v === \"high\") return \"high\";\n  if (v === \"medium\") return \"medium\";\n  return \"low\";\n}\nfunction toBool(x) {\n  if (typeof x === \"boolean\") return x;\n  if (typeof x === \"string\") return x.trim().toLowerCase() === \"true\";\n  return false;\n}\n\nreturn items.map(it => {\n  const j = it.json || {};\n\n  // Basics\n  const n    = (j.n != null) ? Number(j.n) : undefined;\n  const type = s(j.type);\n  const q    = s(j.q);\n\n  // Context\n  const accept_if     = (j.question && Array.isArray(j.question.accept_if)) ? j.question.accept_if : [];\n  const claim_context = j.claim_context || {};\n\n  // Status & model-only flags\n  const status     = j.status || \"insufficient\";  // preserve as-is if provided\n  const model_only = (j.model_only === true) || (s(j.model_only).toLowerCase() === \"true\");\n\n  // ----- 1) Model-only first (even if status === \"ok\") -----\n  if (model_only) {\n    return {\n      json: {\n        n, type, q,\n        mode: \"model_only\",\n        accept_if,\n        claim_context,\n        evidence: { url: \"\", title: \"\", snippets: [], used_query: \"\" }, // no doc evidence in model-only\n        model_only: {\n          summary: s(j.summary),\n          likely_accept_if: (j.likely_accept_if == null || j.likely_accept_if === \"\") ? null : String(j.likely_accept_if),\n          confidence: sanitizeConfidence(j.confidence),\n          next_checks: Array.isArray(j.next_checks) ? j.next_checks.map(s).filter(Boolean).slice(0,4) : [],\n          disclaimers: s(j.disclaimers)\n        }\n      }\n    };\n  }\n\n  // ----- 2) Research success → real evidence path -----\n  if (status === \"ok\") {\n    const ev     = j.evidence || {};\n    const url    = s(ev.url || j.result?.url);\n    const title  = s(ev.title || j.result?.title);\n    const snips  = clampSnippets(ev.snippets || j.snippets);\n\n    return {\n      json: {\n        n, type, q,\n        mode: \"researched\",\n        accept_if,\n        claim_context,\n        evidence: {\n          url: url || \"\",\n          title: title || \"\",\n          snippets: snips,\n          used_query: s(j.used_query)\n        },\n        model_only: null\n      }\n    };\n  }\n\n  // ----- 3) Insufficient (no usable evidence and not model-only) -----\n  if (status === \"insufficient\") {\n    return {\n      json: {\n        n, type, q,\n        mode: \"insufficient\",\n        accept_if,\n        claim_context,\n        evidence: { url: \"\", title: \"\", snippets: [], used_query: \"\" },\n        model_only: null\n      }\n    };\n  }\n\n  // ----- 4) Fallback default -----\n  return {\n    json: {\n      n, type, q,\n      mode: \"unknown\",\n      accept_if,\n      claim_context,\n      evidence: { url: \"\", title: \"\", snippets: [], used_query: \"\" },\n      model_only: null\n    }\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2464,
+        -880
+      ],
+      "id": "821f8af4-fb79-47f3-b72f-0ae0acd22e8e",
+      "name": "Shape Evidence"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Retry Builder — per-item fan-out\n// Builds a snapshot of the previous attempt (`previous_result`) for each item\n// and routes to: \"pass\" (if already ok), \"retry\" (try again), or \"fallback\".\n\nfunction toBool(x) {\n  if (typeof x === 'boolean') return x;\n  if (typeof x === 'string') return x.trim().toLowerCase() === 'true';\n  return false;\n}\nfunction s(x){ return (x == null ? '' : String(x)).trim(); }\n\nreturn items.map((it) => {\n  const j = it.json || {};\n\n  // --- snapshot of the previous attempt (from Parse Research Output) ---\n  const previous_result = {\n    status: s(j.status),\n    model_only: toBool(j.model_only),\n    summary: s(j.summary),\n    likely_accept_if: s(j.likely_accept_if || ''),\n    confidence: s(j.confidence || ''),\n    disclaimers: s(j.disclaimers || ''),\n    next_checks: Array.isArray(j.next_checks) ? j.next_checks : [],\n    used_query: s(j.used_query || ''),\n    result: (j.result && typeof j.result === 'object') ? j.result : { url: '', title: '' },\n    snippets: Array.isArray(j.snippets) ? j.snippets : []\n  };\n\n  // Attempts and queues\n  const tries = (j.tries ?? 0) + 1;\n  const max_tries = j.max_tries ?? 2;\n  const nextPool = (j.remaining_queries || []).map(s).filter(Boolean);\n\n  // If this item is already solved, short-circuit to pass-through\n  if (s(j.status) === 'ok') {\n    return {\n      json: {\n        stage: \"pass\",                 // wire this directly to Evaluate\n        n: j.n,\n        q: j.q,\n        question: j.question,\n        claim_context: j.claim_context || {},\n        meta: j.meta || {},\n        previous_result\n      }\n    };\n  }\n\n  // No more tries or no queries left → fallback\n  if (tries >= max_tries || nextPool.length === 0) {\n    return [{\n      json: {\n        stage: \"fallback\",\n        n: j.n,\n        q: j.q,\n        question: j.question,\n        claim_context: j.claim_context || {},\n        meta: j.meta || {},\n        previous_result\n      }\n    }][0];\n  }\n\n  // Otherwise, retry\n  const forced_query = nextPool[0]; // optional hint for agents that use it\n\n  return {\n    json: {\n      stage: \"retry\",                 // wire this to your Retry Research Agent\n      n: j.n,\n      q: j.q,\n      question: j.question,\n      claim_context: j.claim_context || {},\n      meta: j.meta || {},\n\n      tries,\n      max_tries,\n      used_queries: j.used_queries || [],\n      remaining_queries: nextPool,    // agent may use [0] as next query\n      forced_query,\n\n      previous_result\n    }\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1408,
+        -688
+      ],
+      "id": "a63ac8db-6f69-46d0-a0a1-743a80aa2ad8",
+      "name": "Retry Builder"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.toolThink",
+      "typeVersion": 1.1,
+      "position": [
+        1776,
+        -496
+      ],
+      "id": "5495b7aa-cbf9-47fa-91a3-6272d2c359cd",
+      "name": "Think5"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are Retry Research Agent (Model-Only, Decisive, Decision-Grade).\n\nINPUT\n- question: {{ JSON.stringify($json.question) }}          // has: n, type, q, accept_if?[]\n- claim_context: {{ JSON.stringify($json.claim_context) }} // payer, state, member_plan_type, cpt_codes, icd10_codes, place_of_service, note_summary\n- previous_result (optional): {{ JSON.stringify($json.previous_result) }} // prior agent’s single-object output (same schema as this agent), if available\n\nMISSION\nReassess the question using domain knowledge only and deliver a crisp, decision-oriented hypothesis tailored to the claim_context. Be more decisive than the first pass, but remain safe:\n- If broad cross-payer norms clearly support a stance, upgrade confidence to “medium” and set status “ok”.\n- Reserve “high” for definitional, near-universal coding/claims conventions.\n- If uncertainty is still material or depends on payer/state/LOB specifics, keep confidence “low” and status “insufficient”.\n\nHOW TO USE previous_result (if provided)\n- Treat it as a baseline. If it was “insufficient” or “low”, try to strengthen to “medium/ok” **only** when justified by widely observed norms.\n- If the prior stance was already strong, you may refine wording but don’t inflate confidence without cause.\n- Do not reference “previous_result” explicitly in the output; integrate improvements implicitly.\n\nWHAT TO WRITE\n1) Summary must begin with exactly one of: “Likely yes—”, “Likely no—”, or “Unclear—”.\n2) Provide 1–2 short sentences grounded in broad industry norms; tailor to claim_context without asserting payer-specific policy.\n3) If question.accept_if exists, pick exactly ONE line that best aligns with your stance; if none fit, use an empty string \"\".\n4) Provide 0–3 short, practical next checks (things a verifier could do later).\n\nCONFIDENCE & STATUS (Decisive Gate)\n- Start from “low” by default.\n- Use “medium” when your stance is well-aligned with common industry norms for the topic and does not rely on multiple unverified payer/state/LOB assumptions.\n- Use “high” only for definitional, near-universal truths (stable coding/claims conventions).\n- If confidence is “medium” or “high” ⇒ \"status\": \"ok\".\n- If confidence is “low” OR the stance begins with “Unclear—” ⇒ \"status\": \"insufficient\".\n\nFORMAT (ALL STRINGS; JSON ARRAY with exactly one object)\n- Every scalar field is a string. Do not output numbers, booleans, or nulls.\n- next_checks is an array of strings (0–3).\n- No extra keys, no markdown, no code fences, no trailing commas.\n\nOUTPUT — JSON ARRAY ONLY:\n[\n  {\n    \"n\": \"string\",                                // echo question.n (e.g., \"1\")\n    \"type\": \"basic|specialty|subspecialty\",       // echo from input\n    \"q\": \"string\",                                // echo from input\n    \"status\": \"ok|insufficient\",\n    \"model_only\": \"true\",\n    \"summary\": \"Likely yes—... / Likely no—... / Unclear—... (1–2 short sentences tailored to claim_context)\",\n    \"likely_accept_if\": \"string\",                 // ONE line from accept_if if present; else \"\"\n    \"confidence\": \"low|medium|high\",\n    \"disclaimers\": \"Plan, state, and line-of-business rules vary; verify in official policy.\",\n    \"next_checks\": [\"string\", \"string\"]           // 0–3 items\n  }\n]\n\nSTYLE\n- Answer-first; concise; no policy names/numbers, URLs, or quotations.\n- Domain knowledge only (no external tools).\n- If in doubt, prefer “Unclear—” + low ⇒ “insufficient”.\n",
+        "hasOutputParser": true,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        1664,
+        -688
+      ],
+      "id": "2f1118af-9107-40e9-984e-91ec7c3827da",
+      "name": "Retry Research AI Agent"
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "[\n  {\n  \"n\": \"string\",\n  \"type\": \"basic|specialty|subspecialty\",\n  \"q\": \"string\",\n  \"status\": \"ok|insufficient\",\n  \"model_only\": \"true\",\n  \"summary\": \"Likely yes—… / Likely no—… / Unclear—…\",\n  \"likely_accept_if\": \"string\",\n  \"confidence\": \"low|medium|high\",\n  \"disclaimers\": \"string\",\n  \"next_checks\": [\"string\", \"string\"]\n  }\n]",
+        "autoFix": true
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        1872,
+        -496
+      ],
+      "id": "10c87cff-ec6d-47ac-9054-c49b93f5bbe2",
+      "name": "Structured Output Parser1"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-3.5-turbo",
+          "mode": "list",
+          "cachedResultName": "gpt-3.5-turbo"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        1888,
+        -384
+      ],
+      "id": "5692bdf9-c419-4def-b8a0-4602c3a0bc86",
+      "name": "OpenAI Chat Model3",
+      "credentials": {
+        "openAiApi": {
+          "id": "yBut9f2eV7vGo1Td",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Retry Research Output — model-only, per item\n// Supports: object, stringified JSON, or array with one object in `output`.\n// Preserves incoming `status` exactly. Does NOT consume queries or increment tries.\n\nconst NODE_RETRY = \"Retry Builder\";\nconst NODE_SPLIT = \"Code - Split + ctx\";\n\nfunction toBool(x) {\n  if (typeof x === \"boolean\") return x;\n  if (typeof x === \"string\") return x.trim().toLowerCase() === \"true\";\n  return false;\n}\nfunction s(x) { return (x == null ? \"\" : String(x)).trim(); }\nfunction firstObj(x){\n  if (!x) return null;\n  if (Array.isArray(x)) {\n    for (const el of x) if (el && typeof el === \"object\" && !Array.isArray(el)) return el;\n    return null;\n  }\n  if (typeof x === \"object\") return x;\n  if (typeof x === \"string\") {\n    try { return firstObj(JSON.parse(x.trim())); } catch { return null; }\n  }\n  return null;\n}\nfunction getAll(nodeName) {\n  try { const arr = $items(nodeName) || []; return arr.map(x => x.json || {}); } catch { return []; }\n}\nfunction findByN(list, n) {\n  const numN = Number(n);\n  return list.find(j => (Number(j?.n) === numN) || (Number(j?.question?.n) === numN)) || null;\n}\n\nreturn items.map((it) => {\n  // 1) parse agent output\n  const raw = (it.json && it.json.output !== undefined) ? it.json.output : it.json;\n  const r = firstObj(raw);\n  if (!r || (r.n == null && !r.q && !r.summary)) {\n    throw new Error(\"Retry Research output missing or malformed\");\n  }\n\n  // 2) reattach context: prefer Retry Builder, then Split\n  const retryAll = getAll(NODE_RETRY);\n  const splitAll = getAll(NODE_SPLIT);\n  const nNow = Number(s(r.n));\n\n  let base = findByN(retryAll, nNow) || findByN(splitAll, nNow) || {};\n  const question      = base.question || it.json.question || {};\n  const claim_context = base.claim_context || it.json.claim_context || {};\n  const meta          = base.meta || it.json.meta || {};\n  const tries         = base.tries ?? it.json.tries ?? 0;       // DO NOT increment here\n  const max_tries     = base.max_tries ?? it.json.max_tries ?? 2;\n\n  // 3) previous_result snapshot (from Retry Builder), if any\n  const previous_result = base.previous_result || null;\n\n  // 4) normalize + preserve status\n  const statusOut  = s(r.status || \"insufficient\");\n  const confIn     = s(r.confidence).toLowerCase();\n  const confidence = confIn === \"high\" ? \"high\" : (confIn === \"medium\" ? \"medium\" : \"low\");\n  const model_only = toBool(r.model_only);\n\n  // 5) DO NOT consume queries in model-only retry parser\n  const remaining_queries = Array.isArray(base.remaining_queries) ? base.remaining_queries : (Array.isArray(it.json.remaining_queries) ? it.json.remaining_queries : []);\n  const used_queries      = Array.isArray(base.used_queries) ? base.used_queries : (Array.isArray(it.json.used_queries) ? it.json.used_queries : []);\n\n  // 6) evidence placeholders (retry is model-only; keep empty)\n  const used_query = s(r.used_query || \"\");\n  const result     = (r.result && typeof r.result === \"object\") ? r.result : { url: \"\", title: \"\" };\n  const snippets   = Array.isArray(r.snippets) ? r.snippets : [];\n\n  return {\n    json: {\n      n: nNow || Number(question.n),\n      type: s(r.type || question.type || \"\"),\n      q: s(r.q || question.q || \"\"),\n      status: statusOut,\n      model_only,\n\n      summary: s(r.summary),\n      likely_accept_if: s(r.likely_accept_if || \"\"),\n      confidence,\n      disclaimers: s(r.disclaimers),\n      next_checks: Array.isArray(r.next_checks) ? r.next_checks : [],\n\n      // evidence (empty for model-only)\n      used_query,\n      result,\n      snippets,\n\n      // context/state passthrough\n      question,\n      claim_context,\n      meta,\n      tries,\n      max_tries,\n      remaining_queries,\n      used_queries,\n\n      // for auditor/debug\n      previous_result\n    }\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2032,
+        -688
+      ],
+      "id": "01c8bbef-4da8-4fb2-b909-71af3312cb8c",
+      "name": "Parse retry research output"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Research output (string | object | [object]) and reattach context from \"Code - Split + ctx\".\n// IMPORTANT:\n// - Preserve the incoming `status` EXACTLY.\n// - If model_only is \"true\", DO NOT consume queries or increment tries.\n\nfunction toBool(x) {\n  if (typeof x === 'boolean') return x;\n  if (typeof x === 'string') return x.trim().toLowerCase() === 'true';\n  return false;\n}\nfunction s(x){ return (x==null ? '' : String(x)).trim(); }\nfunction uniqLower(arr){\n  const out=[], seen=new Set();\n  for (const v of (arr||[])) {\n    const t=s(v); if(!t) continue;\n    const k=t.toLowerCase(); if(!seen.has(k)){ seen.add(k); out.push(t); }\n  }\n  return out;\n}\nfunction firstObj(x){\n  if (!x) return null;\n  if (Array.isArray(x)) {\n    for (const el of x) { if (el && typeof el === 'object' && !Array.isArray(el)) return el; }\n    return null;\n  }\n  if (typeof x === 'object') return x;\n  if (typeof x === 'string') {\n    try {\n      const parsed = JSON.parse(x.trim());\n      return firstObj(parsed);\n    } catch (_) { return null; }\n  }\n  return null;\n}\n\nreturn items.map((item, i) => {\n  // 1) Parse agent output (supports: object, stringified JSON, or array with one object)\n  const raw = (item.json && item.json.output !== undefined) ? item.json.output : item.json;\n  const r = firstObj(raw);\n  if (!r || (r.n == null && !r.q && !r.summary)) {\n    throw new Error('Research output missing or malformed');\n  }\n\n  // 2) Get split/context by index; fallback by question.n match\n  const splitItems = $items(\"Code - Split + ctx\") || [];\n  let split = splitItems[i]?.json || {};\n  const rNnum = Number(s(r.n)) || undefined;\n  if ((!split.question || !Object.keys(split.question||{}).length) && rNnum != null) {\n    const byN = splitItems.find(it => Number(it?.json?.question?.n) === rNnum);\n    if (byN) split = byN.json;\n  }\n\n  // 3) Context\n  const question = split.question || item.json.question || {};\n  const claim_context = split.claim_context || item.json.claim_context || {};\n  const meta = split.meta || item.json.meta || {};\n  const tries = (split.tries ?? item.json.tries ?? 0);        // do NOT increment here\n  const max_tries = (split.max_tries ?? item.json.max_tries ?? 2);\n\n  // 4) Queries base (as carried from splitter)\n  const rem0  = uniqLower(split.remaining_queries || item.json.remaining_queries || []);\n  const used0 = uniqLower(split.used_queries || item.json.used_queries || []);\n\n  // 5) Model-only detection (string \"true\" or boolean)\n  const isModelOnly = toBool(r.model_only);\n\n  // 6) Normalize core fields\n  const nOut       = (rNnum != null) ? rNnum : Number(question.n);\n  const typeOut    = s(r.type || question.type || '');\n  const qOut       = s(r.q || question.q || '');\n  const statusOut  = s(r.status || 'insufficient'); // keep EXACT incoming status\n  const confIn     = s(r.confidence).toLowerCase();\n  const confidence = (confIn === 'high' ? 'high' : (confIn === 'medium' ? 'medium' : 'low'));\n\n  if (isModelOnly) {\n    // Model-only: DO NOT consume a query; pass through model strings and context\n    const nextChecks = Array.isArray(r.next_checks) ? r.next_checks.map(s).filter(Boolean).slice(0,3) : [];\n\n    return {\n      json: {\n        n: nOut,\n        type: typeOut,\n        q: qOut,\n        status: statusOut,\n        model_only: true,\n\n        summary: s(r.summary),\n        likely_accept_if: s(r.likely_accept_if || ''),\n        confidence,\n        disclaimers: s(r.disclaimers),\n\n        next_checks: nextChecks,\n\n        // Evidence placeholders (none in model-only)\n        used_query: '',\n        result: { url: '', title: '' },\n        snippets: [],\n\n        // Context/state passthrough\n        question,\n        claim_context,\n        meta,\n        tries,\n        max_tries,\n        remaining_queries: rem0,  // unchanged\n        used_queries: used0       // unchanged\n      }\n    };\n  }\n\n  // Evidence mode: consume one query (if any used) and update pools\n  const used_query = s(r.used_query) || (rem0[0] || '');\n  const usedSet = new Set(used0.map(x => x.toLowerCase()));\n  if (used_query) usedSet.add(used_query.toLowerCase());\n  const remaining_queries = rem0.filter(q => !usedSet.has(q.toLowerCase()));\n  const used_queries = uniqLower([...used0, used_query]);\n\n  const snippets = Array.isArray(r.snippets) ? r.snippets : [];\n  const result   = (r.result && typeof r.result === 'object') ? r.result : { url: '', title: '' };\n\n  return {\n    json: {\n      n: nOut,\n      type: typeOut,\n      q: qOut,\n      used_query,\n      result,\n      snippets,\n      status: statusOut,\n\n      // Context/state\n      question,\n      claim_context,\n      meta,\n      tries,\n      max_tries,\n      remaining_queries,\n      used_queries\n    }\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        -704
+      ],
+      "id": "ec6846c4-618c-4511-a893-ca245aad6a12",
+      "name": "Parse Research Output"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.toolThink",
+      "typeVersion": 1.1,
+      "position": [
+        3040,
+        -704
+      ],
+      "id": "7a700395-c1dd-41d4-b1a1-10daf1302dd6",
+      "name": "Think2"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are the Evaluator Agent (Model-Only).\n\nINPUT\n- items: {{ JSON.stringify($json.items) }}\n  // Each item may look like either the parsed/model-only record from \"Shape Evidence\"\n  // OR a near-equivalent object with {status, model_only, summary, likely_accept_if, ...}.\n  // Fields you may see per item:\n  // {\n  //   n: string|number,\n  //   type: \"basic\"|\"specialty\"|\"subspecialty\",\n  //   q: string,\n  //   // preferred model-only shape (from Shape Evidence):\n  //   mode?: \"model_only\"|\"researched\"|\"insufficient\"|\"unknown\",\n  //   accept_if?: string[],\n  //   claim_context?: object,\n  //   evidence?: { url: string, title: string, snippets: [{text, where}], used_query: string },\n  //   model_only?: { summary: string, likely_accept_if: string|null, confidence: \"low\"|\"medium\"|\"high\", next_checks: string[], disclaimers: string } | null,\n  //\n  //   // legacy/alternate fields you may also see:\n  //   status?: \"ok\"|\"insufficient\"|\"model_only\",\n  //   summary?: string,\n  //   likely_accept_if?: string|null,\n  //   confidence?: \"low\"|\"medium\"|\"high\",\n  //   next_checks?: string[],\n  //   disclaimers?: string\n  // }\n\nASSUMPTIONS\n- Treat all items as MODEL-ONLY (heuristic) decisions. Ignore document evidence.\n- Use claim_context to keep recommendations practical (payer/state/LOB/CPT/POS).\n\nDECISION RULES (per question)\n- Define MODE:\n  - If item.mode exists → use it.\n  - Else if item.model_only === true OR item.status in {\"ok\",\"insufficient\",\"model_only\"} with no evidence → MODE=\"model_only\".\n- For MODE=\"model_only\":\n  - PASS_MODEL if:\n    (A) confidence is \"medium\" or \"high\" (prefer \"medium\"),\n    AND\n    (B) likely_accept_if is a non-empty string AND semantically matches one of accept_if (string equality OR close paraphrase).\n  - Otherwise → INSUFFICIENT.\n- Never mark FAIL in model-only mode.\n\nAGGREGATION (claim-level)\n- BASIC are gatekeepers: all BASIC must be PASS_MODEL or the claim is NO_GO.\n- Also require at least one SPECIALTY or SUBSPECIALTY to be PASS_MODEL for GO.\n- Overall confidence:\n  - \"medium\" if GO; otherwise \"low\".\n- Blockers: list BASIC items that are INSUFFICIENT (n + short reason).\n- Recommendations:\n  - Collect up to 5 unique, concrete next steps from items with INSUFFICIENT:\n    • Prefer their model_only.next_checks (or next_checks fallback).\n    • If thin, add 1–2 generic but context-aware actions (e.g., “Confirm PA for CPTs in POS with payer”).\n  - Keep each recommendation short and actionable; deduplicate.\n\nOUTPUT — JSON ONLY (no markdown, no extra keys, no trailing commas)\n{\n  \"per_question\": [\n    {\n      \"n\": \"<string>\",\n      \"type\": \"basic|specialty|subspecialty\",\n      \"q\": \"<string>\",\n      \"decision\": \"PASS_MODEL|INSUFFICIENT\",\n      \"confidence\": \"low|medium\",\n      \"matched_accept_if\": \"<string|null>\",\n      \"notes\": \"<=160 chars why it passed/insufficient>\"\n    }\n  ],\n  \"overall\": {\n    \"go_no_go\": \"GO|NO_GO\",\n    \"confidence\": \"low|medium\",\n    \"rationale\": \"<=240 chars on BASIC outcome and whether any specialty/subspecialty passed>\",\n    \"blockers\": [\n      { \"n\": \"<string>\", \"reason\": \"<=120 chars>\" }\n    ],\n    \"recommendations\": [\"<string>\", \"<string>\", \"<string>\"]\n  }\n}\n\nIMPLEMENTATION GUIDANCE\n- Matching likely_accept_if to accept_if:\n  - If likely_accept_if exactly equals any accept_if entry (case-insensitive) → match.\n  - Else consider a close paraphrase (e.g., same CPTs/keywords/intention).\n  - If no match → matched_accept_if = null.\n- Confidence per item:\n  - \"medium\" when PASS_MODEL,\n  - \"low\" when INSUFFICIENT.\n- Keep all strings concise. Do not include URLs. Do not invent evidence.\n",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        2880,
+        -880
+      ],
+      "id": "25cb95ca-ec35-47a0-9190-59b34e751802",
+      "name": "Evaluate AI Agent"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        2240,
+        -880
+      ],
+      "id": "165c3034-25a0-4d03-a50f-6a95cc310dfb",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "[\n  {\n  \"n\": \"string\",\n  \"type\": \"basic|specialty|subspecialty\",\n  \"q\": \"string\",\n  \"status\": \"ok|insufficient\",\n  \"model_only\": \"true\",\n  \"summary\": \"Likely yes—… / Likely no—… / Unclear—…\",\n  \"likely_accept_if\": \"string\",\n  \"confidence\": \"low|medium|high\",\n  \"disclaimers\": \"string\",\n  \"next_checks\": [\"string\", \"string\"]\n  }\n]",
+        "autoFix": true
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        800,
+        -496
+      ],
+      "id": "886c9896-ed1a-4ea0-814a-1d511590a8e2",
+      "name": "Structured Output Parser"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-3.5-turbo",
+          "mode": "list",
+          "cachedResultName": "gpt-3.5-turbo"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        832,
+        -352
+      ],
+      "id": "88b87e91-094b-451e-9662-7ab16f102cd4",
+      "name": "OpenAI Chat Model4",
+      "credentials": {
+        "openAiApi": {
+          "id": "yBut9f2eV7vGo1Td",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Evaluator Output — normalize LLM string → object\n// Input: items[i].json.output is a JSON string from Evaluator Agent\n// Output: one object with the parsed structure + handy counts\n\nfunction s(x){ return (x==null ? \"\" : String(x)).trim(); }\n\nreturn items.map((it) => {\n  const raw = it.json.output ?? it.json;\n  let ev;\n  if (typeof raw === \"string\") {\n    try { ev = JSON.parse(raw.trim()); }\n    catch (e) { throw new Error(\"Failed to parse Evaluator output: \" + e.message); }\n  } else if (raw && (raw.per_question || raw.overall)) {\n    ev = raw; // already object-shaped\n  } else {\n    throw new Error(\"Evaluator output missing\");\n  }\n\n  const per = Array.isArray(ev.per_question) ? ev.per_question : [];\n  const overall = ev.overall || {};\n\n  // Quick stats by decision and type\n  const stats = { total: per.length, by_decision: {}, by_type: {} };\n  for (const p of per) {\n    const d = s(p.decision).toUpperCase() || \"UNKNOWN\";\n    const t = s(p.type).toLowerCase() || \"unknown\";\n    stats.by_decision[d] = (stats.by_decision[d] || 0) + 1;\n    stats.by_type[t] = (stats.by_type[t] || 0) + 1;\n  }\n\n  return {\n    json: {\n      per_question: per,\n      overall,\n      stats\n    }\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3232,
+        -880
+      ],
+      "id": "c48959d6-bb22-41e7-921c-434ec8ed5884",
+      "name": "Parse Evaluator Output"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Decision Router — branch next steps based on overall.go_no_go\n// Use this node’s outputs in an IF node or Switch node\n\nconst overall = $json.overall || {};\nconst goNoGo = (overall.go_no_go || \"\").toUpperCase();\n\nreturn [{\n  json: {\n    stage: goNoGo === \"GO\" ? \"approve\" : \"no_go\",\n    overall,\n    per_question: $json.per_question,\n    stats: $json.stats\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3440,
+        -880
+      ],
+      "id": "65b8b1d7-6663-49db-a118-6935e41b29ab",
+      "name": "Decision Router (GO vs NO_GO)"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Aggregate for Evaluate (compact)\n// Keep only the fields the Evaluator needs; trims token usage.\n\nfunction s(x){ return (x==null ? \"\" : String(x)).trim(); }\nfunction take(obj, keys){\n  const out = {};\n  for (const k of keys) out[k] = obj?.[k];\n  return out;\n}\nconst PRIORITY = { basic: 0, specialty: 1, subspecialty: 2 };\n\nconst shaped = $input.all()\n  .map(it => it.json || {})\n  .map(j => ({\n    n: String(j.n ?? \"\"),\n    type: s(j.type),\n    q: s(j.q),\n    accept_if: Array.isArray(j.accept_if) ? j.accept_if.map(s) : [],\n    claim_context: {\n      payer: s(j.claim_context?.payer),\n      state: s(j.claim_context?.state),\n      member_plan_type: s(j.claim_context?.member_plan_type),\n      place_of_service: s(j.claim_context?.place_of_service),\n      cpt_codes: Array.isArray(j.claim_context?.cpt_codes) ? j.claim_context.cpt_codes.map(s) : [],\n      icd10_codes: Array.isArray(j.claim_context?.icd10_codes) ? j.claim_context.icd10_codes.map(s) : []\n    },\n    // evaluator only cares about model_only fields in MVP\n    model_only: j.model_only ? {\n      summary: s(j.model_only.summary || j.summary),\n      likely_accept_if: s(j.model_only.likely_accept_if || j.likely_accept_if),\n      confidence: s(j.model_only.confidence || j.confidence).toLowerCase() || \"low\",\n      next_checks: Array.isArray(j.model_only.next_checks || j.next_checks) \n        ? (j.model_only.next_checks || j.next_checks).map(s).filter(Boolean).slice(0,4) \n        : [],\n      disclaimers: s(j.model_only.disclaimers || j.disclaimers)\n    } : {\n      summary: s(j.summary),\n      likely_accept_if: s(j.likely_accept_if),\n      confidence: (s(j.confidence).toLowerCase() || \"low\"),\n      next_checks: Array.isArray(j.next_checks) ? j.next_checks.map(s).filter(Boolean).slice(0,4) : [],\n      disclaimers: s(j.disclaimers)\n    }\n  }))\n  // Sort BASIC first for gatekeeping, then by n\n  .sort((a,b) => {\n    const pa = PRIORITY[a.type] ?? 99;\n    const pb = PRIORITY[b.type] ?? 99;\n    if (pa !== pb) return pa - pb;\n    return Number(a.n) - Number(b.n);\n  });\n\nreturn [{ json: { items: shaped } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2672,
+        -880
+      ],
+      "id": "a207b71c-0940-40d9-a609-9493e14cc7b1",
+      "name": "Aggregator"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-5-mini"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        2880,
+        -704
+      ],
+      "id": "d19fbe50-bdef-43e6-9926-7ed6297acb5f",
+      "name": "gpt 5-mini1",
+      "credentials": {
+        "openAiApi": {
+          "id": "yBut9f2eV7vGo1Td",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5",
+          "mode": "list",
+          "cachedResultName": "gpt-5"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        1664,
+        -496
+      ],
+      "id": "86946418-d54f-4b22-9918-f77c5bbf234b",
+      "name": "gpt 5",
+      "credentials": {
+        "openAiApi": {
+          "id": "yBut9f2eV7vGo1Td",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-5-mini"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        544,
+        -496
+      ],
+      "id": "13547fa7-91d1-4c43-9fc0-c096bfc0b953",
+      "name": "5-mini",
+      "credentials": {
+        "openAiApi": {
+          "id": "yBut9f2eV7vGo1Td",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## need to figure out what to do if nothing in second merge\n"
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        2224,
+        -688
+      ],
+      "typeVersion": 1,
+      "id": "752475f9-e93d-4ee5-a6cb-43760324a20b",
+      "name": "Sticky Note"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Planner AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Code - Split + ctx",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser2": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Planner AI Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model2": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Structured Output Parser2",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Think": {
+      "ai_tool": [
+        [
+          {
+            "node": "Planner AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "gpt 4.1-mini": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Planner AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Payload": {
+      "main": [
+        [
+          {
+            "node": "Code - Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Payload": {
+      "main": [
+        [
+          {
+            "node": "Planner AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Split + ctx": {
+      "main": [
+        [
+          {
+            "node": "Research AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Think4": {
+      "ai_tool": [
+        []
+      ]
+    },
+    "Research AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Parse Research Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Retry Builder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry Builder": {
+      "main": [
+        [
+          {
+            "node": "Retry Research AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Think5": {
+      "ai_tool": [
+        [
+          {
+            "node": "Retry Research AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser1": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Retry Research AI Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model3": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Structured Output Parser1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry Research AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Parse retry research output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse retry research output": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Parse Research Output": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shape Evidence": {
+      "main": [
+        [
+          {
+            "node": "Aggregator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Think2": {
+      "ai_tool": [
+        [
+          {
+            "node": "Evaluate AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Shape Evidence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model4": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Structured Output Parser",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Research AI Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluate AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Parse Evaluator Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Evaluator Output": {
+      "main": [
+        [
+          {
+            "node": "Decision Router (GO vs NO_GO)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregator": {
+      "main": [
+        [
+          {
+            "node": "Evaluate AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "gpt 5-mini1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Evaluate AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "gpt 5": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Retry Research AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "5-mini": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Research AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "4ae9b30d-a8df-48b1-a410-547ee00e1a17",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "a1411e1eca12ea62eba5da9ef0526277a1aa5e8044423e8a7246ad688ad48fe1"
+  },
+  "id": "ctVg8HLj5URFDZYW",
+  "tags": [
+    {
+      "createdAt": "2025-08-23T21:09:48.576Z",
+      "updatedAt": "2025-08-23T21:09:48.576Z",
+      "id": "RVKC9aU6T4whx17s",
+      "name": "planner-agent"
+    }
+  ]
+}
