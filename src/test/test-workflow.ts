@@ -1,4 +1,4 @@
-import { ValidationWorkflow } from '../services/validation-workflow-new';
+import { ValidationWorkflow } from '../services/validation-workflow';
 import { ClaimPayload } from '../types/claim-types';
 
 // Test claim payload
@@ -84,7 +84,7 @@ async function runTest(testCase: any, index: number) {
     // Log detailed results
     if (result.per_question && result.per_question.length > 0) {
       console.log('\n📝 Question Results:');
-      result.per_question.forEach((q, i) => {
+      result.per_question.forEach((q: any, i: number) => {
         console.log(`  ${i + 1}. ${q.q}`);
         console.log(`     Decision: ${q.decision}`);
         console.log(`     Confidence: ${q.confidence}`);
@@ -94,14 +94,14 @@ async function runTest(testCase: any, index: number) {
     
     if (result.overall && result.overall.blockers && result.overall.blockers.length > 0) {
       console.log('\n🚫 Blockers:');
-      result.overall.blockers.forEach((blocker, i) => {
+      result.overall.blockers.forEach((blocker: any, i: number) => {
         console.log(`  ${i + 1}. Question ${blocker.n}: ${blocker.reason}`);
       });
     }
     
     if (result.overall && result.overall.recommendations && result.overall.recommendations.length > 0) {
       console.log('\n💡 Recommendations:');
-      result.overall.recommendations.forEach((rec, i) => {
+      result.overall.recommendations.forEach((rec: any, i: number) => {
         console.log(`  ${i + 1}. ${rec}`);
       });
     }

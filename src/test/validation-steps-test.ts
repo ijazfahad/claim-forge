@@ -216,7 +216,26 @@ class ValidationStepsTest {
           passes: [],
           is_valid: true,
           risk_score: 10
-        }
+        },
+        ai_clinical_validation: {
+          overall_appropriate: true,
+          cpt_validation: [],
+          icd_validation: [],
+          modifier_validation: [],
+          place_of_service_validation: {
+            code: '11',
+            appropriate: true,
+            confidence: 'high',
+            reasoning: 'Office visit appropriate'
+          },
+          documentation_quality: 'good',
+          issues: [],
+          warnings: [],
+          clinical_concerns: [],
+          recommendations: []
+        },
+        policy_check_required: false,
+        policy_check_details: []
       };
 
       const result = await plannerAgent.generateQuestions(claim, mockSanityResult);
