@@ -31,79 +31,123 @@ export class ValidationWorkflow {
    */
   async validateClaim(payload: ClaimPayload): Promise<EvaluationResult> {
     const startTime = Date.now();
-    const claimId = `claim_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-    console.log(`Starting validation workflow for claim ${claimId}`);
+    const claimId = `CLM-${Date.now()}`;
 
     try {
-      // Step 1: Sanity Check
-      console.log('Step 1: Performing sanity check...');
+      console.log(`🚀 Starting validation for claim ${claimId}`);
+      console.log(`📋 Payer: ${payload.payer}`);
+      console.log(`🏥 CPT Codes: ${payload.cpt_codes.join(', ')}`);
+      console.log(`📊 ICD-10 Codes: ${payload.icd10_codes.join(', ')}`);
+
+      // Step 1: Sanity Check (AI Clinical + CMS/NCCI)
+      console.log('\n🔍 Step 1: Running sanity check...');
       const sanityResult = await this.sanityCheckAgent.performSanityCheck(payload);
+      console.log(`✅ Sanity check completed. Valid: ${sanityResult.is_valid}`);
+      console.log(`🎯 Specialty: ${sanityResult.ssp_prediction.specialty} / ${sanityResult.ssp_prediction.subspecialty}`);
+      console.log(`⚠️  Issues found: ${sanityResult.issues.length}`);
+      console.log(`⚠️  Warnings: ${sanityResult.warnings.length}`);
       
-      if (!sanityResult.is_valid) {
-        throw new Error(`Sanity check failed: ${sanityResult.issues.join(', ')}`);
+      // Log AI Clinical Validation results
+      if (sanityResult.ai_clinical_validation) {
+        console.log(`🧠 AI Clinical: ${sanityResult.ai_clinical_validation.overall_appropriate ? 'Appropriate' : 'Inappropriate'}`);
+        console.log(`📝 Documentation Quality: ${sanityResult.ai_clinical_validation.documentation_quality}`);
       }
 
-      console.log(`Sanity check passed. Specialty: ${sanityResult.ssp_prediction.specialty}`);
+      if (!sanityResult.is_valid) {
+        console.log('❌ Claim failed sanity check, stopping workflow');
+        return this.createFailureResult(claimId, startTime, 'Sanity check failed', sanityResult.issues);
+      }
 
       // Step 2: Planner Agent
-      console.log('Step 2: Generating validation questions...');
+      console.log('\n📋 Step 2: Generating validation questions...');
       const plannerResult = await this.plannerAgent.generateQuestions(payload, sanityResult);
-      
-      console.log(`Generated ${plannerResult.questions.length} validation questions`);
+      console.log(`✅ Generated ${plannerResult.questions.length} validation questions`);
+      console.log(`📊 Question breakdown:`);
+      const basicQuestions = plannerResult.questions.filter(q => q.type === 'basic').length;
+      const specialtyQuestions = plannerResult.questions.filter(q => q.type === 'specialty').length;
+      const subspecialtyQuestions = plannerResult.questions.filter(q => q.type === 'subspecialty').length;
+      console.log(`   - Basic: ${basicQuestions}`);
+      console.log(`   - Specialty: ${specialtyQuestions}`);
+      console.log(`   - Subspecialty: ${subspecialtyQuestions}`);
 
       // Step 3: Research Agent
-      console.log('Step 3: Researching answers...');
+      console.log('\n🔍 Step 3: Researching answers...');
       const researchResults = await this.researchAgent.researchQuestions(
         plannerResult.questions,
         payload
       );
 
-      console.log(`Research completed for ${researchResults.length} questions`);
+      console.log(`✅ Research completed for ${researchResults.length} questions`);
+      const okResults = researchResults.filter(r => r.status === 'ok').length;
+      const insufficientResults = researchResults.filter(r => r.status === 'insufficient').length;
+      console.log(`📊 Results: ${okResults} OK, ${insufficientResults} insufficient`);
 
       // Step 4: Retry Agent (for failed questions)
-      console.log('Step 4: Retrying failed questions...');
-      const failedQuestions = this.retryAgent.filterQuestionsForRetry(researchResults);
       let retryResults: RetryResult[] = [];
-
-      if (failedQuestions.length > 0) {
-        console.log(`Retrying ${failedQuestions.length} failed questions`);
-        retryResults = await this.retryAgent.retryQuestions(failedQuestions, payload);
+      if (insufficientResults > 0) {
+        console.log(`\n🔄 Step 4: Retrying ${insufficientResults} insufficient results...`);
+        const insufficientQuestions = researchResults.filter(r => r.status === 'insufficient');
+        retryResults = await this.retryAgent.retryQuestions(insufficientQuestions, payload);
+        console.log(`✅ Retry completed. Processed ${retryResults.length} questions`);
+      } else {
+        console.log('\n⏭️ Step 4: Skipping retry (all questions answered)');
       }
 
       // Step 5: Evaluate Agent
-      console.log('Step 5: Evaluating results...');
+      console.log('\n⚖️ Step 5: Final evaluation...');
       const evaluationResult = await this.evaluateAgent.evaluateResults(
         claimId,
         [...researchResults, ...retryResults],
         startTime
       );
 
-      console.log(`Validation completed in ${evaluationResult.processing_time_ms}ms`);
-      console.log(`Final status: ${evaluationResult.overall_status}`);
+      console.log(`\n🎉 Validation completed for claim ${claimId}`);
+      console.log(`📊 Final Status: ${evaluationResult.overall_status}`);
+      console.log(`🎯 Confidence: ${evaluationResult.confidence}`);
+      console.log(`⏱️  Processing Time: ${evaluationResult.processing_time_ms}ms`);
 
       return evaluationResult;
 
     } catch (error) {
-      console.error('Validation workflow error:', error);
-      
-      // Return error result
-      return {
-        claim_id: claimId,
-        overall_status: 'NO_GO',
-        confidence: 'low',
-        processing_time_ms: Date.now() - startTime,
-        timestamp: new Date().toISOString(),
-        per_question: [],
-        overall: {
-          go_no_go: 'NO_GO',
-          confidence: 'low',
-          rationale: 'Validation failed due to error',
-          blockers: [],
-          recommendations: []
-        }
-      };
+      console.error(`\n💥 Validation failed for claim ${claimId}:`, error);
+      return this.createFailureResult(
+        claimId,
+        startTime,
+        'Validation workflow failed',
+        [error instanceof Error ? error.message : 'Unknown error']
+      );
     }
+  }
+
+  /**
+   * Create a failure result
+   */
+  private createFailureResult(
+    claimId: string,
+    startTime: number,
+    reason: string,
+    issues: string[]
+  ): EvaluationResult {
+    const processingTime = Date.now() - startTime;
+    
+    return {
+      claim_id: claimId,
+      overall_status: 'NO_GO',
+      confidence: 'low',
+      processing_time_ms: processingTime,
+      timestamp: new Date().toISOString(),
+      per_question: [],
+      overall: {
+        go_no_go: 'NO_GO',
+        confidence: 'low',
+        rationale: reason,
+        blockers: issues.map((issue, index) => ({
+          n: String(index + 1),
+          reason: issue
+        })),
+        recommendations: ['Fix validation issues', 'Retry validation']
+      }
+    };
   }
 
   /**

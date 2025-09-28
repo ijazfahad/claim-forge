@@ -19,6 +19,42 @@ export interface SanityCheckResult {
     modifier_requirements: string[];
     frequency_limits: string[];
   };
+  ai_clinical_validation: {
+    overall_appropriate: boolean;
+    cpt_validation: Array<{
+      code: string;
+      appropriate: boolean;
+      confidence: string;
+      reasoning: string;
+      suggested_code?: string;
+    }>;
+    icd_validation: Array<{
+      code: string;
+      appropriate: boolean;
+      confidence: string;
+      reasoning: string;
+      suggested_code?: string;
+    }>;
+    modifier_validation: Array<{
+      code: string;
+      appropriate: boolean;
+      confidence: string;
+      reasoning: string;
+      suggested_code?: string;
+    }>;
+    place_of_service_validation: {
+      code: string;
+      appropriate: boolean;
+      confidence: string;
+      reasoning: string;
+      suggested_code?: string;
+    };
+    clinical_concerns: string[];
+    documentation_quality: string;
+    recommendations: string[];
+  };
+  policy_check_required: boolean;
+  policy_check_details: any;
   validation_issues: ValidationIssue[];
   cms_ncci_validation: ValidationResult;
 }
@@ -105,23 +141,26 @@ Output Format:
       await this.initialize();
     }
 
-    // Check cache first
-    const cacheKey = `sanity:${payload.cpt_codes.join(',')}:${payload.icd10_codes.join(',')}`;
-    const cached = await this.redis.redis.get(cacheKey);
-    if (cached) {
-      const cachedResult = JSON.parse(cached);
-      // Still need to perform CMS/NCCI validation
-      const validationIssues = await this.cmsNCCIService.validateClaim(payload);
-      cachedResult.validation_issues = validationIssues;
-      return cachedResult;
-    }
+    // Skip cache for testing - always perform fresh validation
+    // const cacheKey = `sanity:${payload.cpt_codes.join(',')}:${payload.icd10_codes.join(',')}`;
+    // const cached = await this.redis.redis.get(cacheKey);
+    // if (cached) {
+    //   const cachedResult = JSON.parse(cached);
+    //   // Still need to perform CMS/NCCI validation
+    //   const validationIssues = await this.cmsNCCIService.validateClaim(payload);
+    //   cachedResult.validation_issues = validationIssues;
+    //   return cachedResult;
+    // }
 
-    // Perform CMS/NCCI validation using the new validator
+    // Step 1: AI Clinical Validation
+    const aiClinicalValidation = await this.performAIClinicalValidation(payload);
+
+    // Step 2: CMS/NCCI Rules Validation
     let cmsNcciValidation: ValidationResult;
     try {
       if (!(await isDatabaseBuilt())) {
-        console.log('CMS/NCCI database not found. Building...');
-        await buildLatest({ verbose: true });
+        console.log('CMS/NCCI database not found. Please run: npm run update:cms');
+        throw new Error('CMS/NCCI database not available. Run npm run update:cms to build the database.');
       }
       
       cmsNcciValidation = await validateClaim({
@@ -146,38 +185,8 @@ Output Format:
     // Also perform legacy validation for compatibility
     const validationIssues = await this.cmsNCCIService.validateClaim(payload);
 
-    const input = `
-Perform sanity check on this medical claim payload:
-
-Claim Payload:
-- CPT Codes: ${payload.cpt_codes.join(', ')}
-- ICD-10 Codes: ${payload.icd10_codes.join(', ')}
-- Notes: ${payload.note_summary}
-- Payer: ${payload.payer}
-- Place of Service: ${payload.place_of_service || 'Not specified'}
-- State: ${payload.state || 'Not specified'}
-
-CMS/NCCI VALIDATION RESULTS:
-${JSON.stringify(cmsNcciValidation, null, 2)}
-
-LEGACY VALIDATION ISSUES:
-${JSON.stringify(validationIssues, null, 2)}
-
-Please validate:
-1. Code formats and compatibility
-2. CMS/NCCI bundling rules (already checked above)
-3. Modifier requirements
-4. Frequency limits
-5. Basic specialty prediction
-6. Overall claim validity
-
-Use the CMS/NCCI validation results and provide detailed analysis.
-`;
-
-    // For now, skip AI agent and return CMS/NCCI validation results directly
-    // This allows testing without OpenAI API key
     const sanityResult: SanityCheckResult = {
-      is_valid: cmsNcciValidation.is_valid,
+      is_valid: cmsNcciValidation.is_valid && aiClinicalValidation.overall_appropriate,
       sanitized_payload: payload,
       ssp_prediction: {
         specialty: 'General Practice', // Basic prediction based on CPT codes
@@ -191,14 +200,244 @@ Use the CMS/NCCI validation results and provide detailed analysis.
         modifier_requirements: cmsNcciValidation.errors.filter(e => e.type.includes('MODIFIER')).map(e => e.message),
         frequency_limits: cmsNcciValidation.errors.filter(e => e.type.includes('MUE')).map(e => e.message)
       },
+      ai_clinical_validation: aiClinicalValidation,
+      policy_check_required: cmsNcciValidation.warnings.some(w => w.type === 'NEEDS_POLICY_CHECK'),
+      policy_check_details: cmsNcciValidation.warnings.find(w => w.type === 'NEEDS_POLICY_CHECK')?.data || null,
       validation_issues: validationIssues,
       cms_ncci_validation: cmsNcciValidation
     };
 
-    // Cache the result
-    await this.redis.redis.setex(cacheKey, 3600, JSON.stringify(sanityResult));
+      // Skip caching for testing
+      // await this.redis.redis.setex(cacheKey, 3600, JSON.stringify(sanityResult));
 
     return sanityResult;
+  }
+
+  /**
+   * Perform AI-powered clinical validation
+   */
+  private async performAIClinicalValidation(payload: ClaimPayload): Promise<{
+    overall_appropriate: boolean;
+    cpt_validation: Array<{
+      code: string;
+      appropriate: boolean;
+      confidence: string;
+      reasoning: string;
+      suggested_code?: string;
+    }>;
+    icd_validation: Array<{
+      code: string;
+      appropriate: boolean;
+      confidence: string;
+      reasoning: string;
+      suggested_code?: string;
+    }>;
+    modifier_validation: Array<{
+      code: string;
+      appropriate: boolean;
+      confidence: string;
+      reasoning: string;
+      suggested_code?: string;
+    }>;
+    place_of_service_validation: {
+      code: string;
+      appropriate: boolean;
+      confidence: string;
+      reasoning: string;
+      suggested_code?: string;
+    };
+    clinical_concerns: string[];
+    documentation_quality: string;
+    recommendations: string[];
+  }> {
+    if (!payload.note_summary || payload.note_summary.trim() === '') {
+      return {
+        overall_appropriate: false,
+        cpt_validation: payload.cpt_codes.map(code => ({
+          code,
+          appropriate: false,
+          confidence: 'low',
+          reasoning: 'No clinical documentation provided'
+        })),
+        icd_validation: payload.icd10_codes.map(code => ({
+          code,
+          appropriate: false,
+          confidence: 'low',
+          reasoning: 'No clinical documentation provided'
+        })),
+        modifier_validation: (payload.modifiers || []).map(code => ({
+          code,
+          appropriate: false,
+          confidence: 'low',
+          reasoning: 'No clinical documentation provided'
+        })),
+        place_of_service_validation: {
+          code: payload.place_of_service || 'Not specified',
+          appropriate: false,
+          confidence: 'low',
+          reasoning: 'No clinical documentation provided'
+        },
+        clinical_concerns: ['Missing clinical documentation'],
+        documentation_quality: 'poor',
+        recommendations: ['Provide clinical documentation for validation']
+      };
+    }
+
+    try {
+      const OpenAI = require('openai');
+      const openai = new OpenAI({
+        apiKey: process.env.OPENAI_API_KEY
+      });
+
+      const prompt = `
+You are a senior insurance claim validator inspecting claims for a small one to two doctor clinic. 
+
+CLAIM CONTEXT:
+- Payer: ${payload.payer}
+- CPT codes: ${payload.cpt_codes.join(', ')}
+- ICD-10 codes: ${payload.icd10_codes.join(', ')}
+- Place of Service: ${payload.place_of_service || 'Not specified'}
+- Modifiers: ${(payload.modifiers || []).join(', ') || 'None'}
+- Clinical Note: ${payload.note_summary}
+
+Evaluate all the CPT codes, ICD-10 codes, Place of Service (POS), note summary, and modifiers to see if they look correct, plausible, and correspond to the doctor's note. Evaluate all the codes and check if they are correct or not, providing suggestions for any incorrect ICD-10 codes, CPT codes, place of service and modifiers.
+
+Respond with ONLY valid JSON (no markdown, no explanations, no unescaped quotes):
+{
+  "overall_appropriate": boolean,
+  "cpt_validation": [{"code": "string", "appropriate": boolean, "confidence": "low|medium|high", "reasoning": "string", "suggested_code": "string|null"}],
+  "icd_validation": [{"code": "string", "appropriate": boolean, "confidence": "low|medium|high", "reasoning": "string", "suggested_code": "string|null"}],
+  "modifier_validation": [{"code": "string", "appropriate": boolean, "confidence": "low|medium|high", "reasoning": "string", "suggested_code": "string|null"}],
+  "place_of_service_validation": {"code": "string", "appropriate": boolean, "confidence": "low|medium|high", "reasoning": "string", "suggested_code": "string|null"},
+  "clinical_concerns": ["string"],
+  "documentation_quality": "poor|adequate|good|excellent",
+  "recommendations": ["string"]
+}
+
+CRITICAL: Ensure all quotes in reasoning and recommendation strings are properly escaped. Use \\" for quotes within strings.
+
+Focus on:
+1. Does the documentation support the level of service billed?
+2. Are the diagnoses supported by clinical findings?
+3. Is there medical necessity for the services?
+4. Are the codes appropriate for the documented care?
+5. Are the modifiers appropriate and supported by the documentation?
+6. Do the modifiers correctly describe the circumstances of the service?
+7. Is the Place of Service (POS) appropriate for the services rendered?
+8. Does the POS code match the location where services were actually provided?
+
+COMMON POS CODES:
+- 11: Office
+- 21: Inpatient Hospital
+- 22: Outpatient Hospital
+- 23: Emergency Room
+- 31: Skilled Nursing Facility
+- 32: Nursing Facility
+- 33: Custodial Care Facility
+- 81: Independent Laboratory
+
+MODIFIER VALIDATION GUIDELINES:
+- Evaluate if modifiers are appropriate for the specific CPT codes being billed
+- Check if modifiers match the clinical circumstances described in the documentation
+- Ensure modifiers are used according to standard medical coding practices
+- If any modifier appears inappropriate for the service, mark it as such
+`;
+
+      const response = await openai.chat.completions.create({
+        model: 'gpt-5-mini',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a medical coding expert with deep knowledge of CPT and ICD-10 coding guidelines, medical necessity, and clinical documentation requirements. Always respond with valid JSON only, no markdown formatting.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        max_completion_tokens: 3000
+      });
+
+      let aiAnalysis;
+      try {
+        // Clean the response to extract JSON
+        let responseText = response.choices[0].message.content || '{}';
+        
+        // Remove markdown code blocks if present
+        responseText = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+        
+        // Find JSON object boundaries
+        const jsonStart = responseText.indexOf('{');
+        const jsonEnd = responseText.lastIndexOf('}') + 1;
+        
+        if (jsonStart !== -1 && jsonEnd > jsonStart) {
+          responseText = responseText.substring(jsonStart, jsonEnd);
+        }
+        
+        // Fix common JSON issues - more robust approach
+        try {
+          // First try to parse as-is
+          aiAnalysis = JSON.parse(responseText);
+        } catch (firstError) {
+          // If that fails, try to fix common issues
+          let fixedText = responseText;
+          
+          // Fix unescaped quotes in string values
+          fixedText = fixedText.replace(/"([^"]*)"([^"]*)"([^"]*)":/g, '"$1\\"$2\\"$3":');
+          fixedText = fixedText.replace(/"([^"]*)"([^"]*)"([^"]*)",/g, '"$1\\"$2\\"$3",');
+          fixedText = fixedText.replace(/"([^"]*)"([^"]*)"([^"]*)"}/g, '"$1\\"$2\\"$3"}');
+          
+          // Try parsing the fixed version
+          try {
+            aiAnalysis = JSON.parse(fixedText);
+          } catch (secondError) {
+            // If still failing, try a more aggressive fix
+            fixedText = responseText.replace(/"/g, '\\"').replace(/\\\\"/g, '"');
+            aiAnalysis = JSON.parse(fixedText);
+          }
+        }
+      } catch (parseError) {
+        console.error('JSON parse error:', parseError);
+        console.error('Raw response:', response.choices[0].message.content);
+        throw new Error('Failed to parse AI response as JSON');
+      }
+
+      return aiAnalysis;
+
+    } catch (error) {
+      console.error('AI clinical validation error:', error);
+      // Fallback to basic validation
+      return {
+        overall_appropriate: false,
+        cpt_validation: payload.cpt_codes.map(code => ({
+          code,
+          appropriate: false,
+          confidence: 'low',
+          reasoning: 'AI validation unavailable'
+        })),
+        icd_validation: payload.icd10_codes.map(code => ({
+          code,
+          appropriate: false,
+          confidence: 'low',
+          reasoning: 'AI validation unavailable'
+        })),
+        modifier_validation: (payload.modifiers || []).map(code => ({
+          code,
+          appropriate: false,
+          confidence: 'low',
+          reasoning: 'AI validation unavailable'
+        })),
+        place_of_service_validation: {
+          code: payload.place_of_service || 'Not specified',
+          appropriate: false,
+          confidence: 'low',
+          reasoning: 'AI validation unavailable'
+        },
+        clinical_concerns: ['AI clinical validation failed'],
+        documentation_quality: 'unknown',
+        recommendations: ['Manual review recommended']
+      };
+    }
   }
 
   /**

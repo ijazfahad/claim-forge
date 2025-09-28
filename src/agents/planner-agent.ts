@@ -150,9 +150,39 @@ Sanity Check Results:
 - Subspecialty: ${sanityResult.ssp_prediction.subspecialty}
 - Confidence: ${sanityResult.ssp_prediction.confidence}
 - Issues: ${sanityResult.issues.join(', ')}
-- Warnings: ${sanityResult.warnings.join(', ')}
+- Warnings: ${sanityResult.warnings.join(', ')}${sanityResult.policy_check_required ? `
+
+VALIDATION RESULTS FROM SANITY CHECK AGENT:
+
+STEP 1 - AI CLINICAL REVIEW (COMPLETED):
+- Overall Appropriate: ${sanityResult.ai_clinical_validation?.overall_appropriate ? 'Yes' : 'No'}
+- Documentation Quality: ${sanityResult.ai_clinical_validation?.documentation_quality || 'Unknown'}
+- CPT Validation: ${sanityResult.ai_clinical_validation?.cpt_validation?.map((c: any) => `${c.code}: ${c.appropriate ? '✓' : '✗'} (${c.confidence})`).join(', ') || 'N/A'}
+- ICD Validation: ${sanityResult.ai_clinical_validation?.icd_validation?.map((i: any) => `${i.code}: ${i.appropriate ? '✓' : '✗'} (${i.confidence})`).join(', ') || 'N/A'}
+- Clinical Concerns: ${sanityResult.ai_clinical_validation?.clinical_concerns?.join(', ') || 'None'}
+- Recommendations: ${sanityResult.ai_clinical_validation?.recommendations?.join(', ') || 'None'}
+
+STEP 2 - CMS/NCCI RULES CHECK (COMPLETED):
+- Valid: ${sanityResult.cms_ncci_validation?.is_valid ? 'Yes' : 'No'}
+- Risk Score: ${sanityResult.cms_ncci_validation?.risk_score || 'Unknown'}
+- Errors: ${sanityResult.cms_ncci_validation?.errors?.length || 0}
+- Warnings: ${sanityResult.cms_ncci_validation?.warnings?.length || 0}
+
+STEP 3 - POLICY VALIDATION (REQUIRED):
+- Policy Check Required: ${sanityResult.policy_check_required ? 'Yes' : 'No'}
+- Provider Type: ${sanityResult.policy_check_details?.provider_type || 'N/A'}
+- Claim Date: ${sanityResult.policy_check_details?.claim_date || 'N/A'}
+
+RESEARCH QUESTIONS TO ANSWER:
+${sanityResult.policy_check_details?.research_questions?.map((q: any, i: number) => `${i + 1}. ${q}`).join('\n') || 'N/A'}
+
+VALIDATION TYPES TO RESEARCH:
+- ${sanityResult.policy_check_details?.validation_types?.join('\n- ') || 'N/A'}
+
+This claim requires payer-specific policy research for medical necessity and coverage validation.` : ''}
 
 Create 2-3 questions per tier (basic, specialty, subspecialty) with search queries for verification.
+${sanityResult.policy_check_required ? 'PRIORITY: Generate questions to research medical necessity policies for the specific CPT/ICD combinations.' : ''}
 Follow the exact output format specified in the instructions.
 `;
 

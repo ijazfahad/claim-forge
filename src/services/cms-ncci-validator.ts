@@ -33,10 +33,18 @@ const pool = new Pool({
   connectionTimeoutMillis: 2000,
 });
 
-// CMS landing pages (stable entry points)
+// CMS landing pages (stable entry points) - Updated to get all data types
 const CMS_PAGES = {
-  ptp: 'https://www.cms.gov/medicare/coding-billing/national-correct-coding-initiative-ncci-edits/medicare-ncci-procedure-procedure-ptp-edits',
-  mue: 'https://www.cms.gov/medicare/coding-billing/national-correct-coding-initiative-ncci-edits/medicare-ncci-medically-unlikely-edits',
+  // PTP (Procedure-to-Procedure) edits
+  ptp_hospital: 'https://www.cms.gov/medicare/coding-billing/national-correct-coding-initiative-ncci-edits/medicare-ncci-procedure-procedure-ptp-edits',
+  ptp_practitioner: 'https://www.cms.gov/medicare/coding-billing/national-correct-coding-initiative-ncci-edits/medicare-ncci-procedure-procedure-ptp-edits',
+  
+  // MUE (Medically Unlikely Edits)
+  mue_hospital: 'https://www.cms.gov/medicare/coding-billing/national-correct-coding-initiative-ncci-edits/medicare-ncci-medically-unlikely-edits',
+  mue_practitioner: 'https://www.cms.gov/medicare/coding-billing/national-correct-coding-initiative-ncci-edits/medicare-ncci-medically-unlikely-edits',
+  mue_dme: 'https://www.cms.gov/medicare/coding-billing/national-correct-coding-initiative-ncci-edits/medicare-ncci-medically-unlikely-edits',
+  
+  // AOC (Add-On Code) edits
   aoc: 'https://www.cms.gov/medicare/coding-billing/national-correct-coding-initiative-ncci-edits/medicare-ncci-add-code-edits'
 };
 
@@ -49,10 +57,14 @@ export interface ClaimValidationInput {
   modifiers?: string[];
   place_of_service?: string;
   note_summary?: string;
+  revenue_codes?: string[];
+  claim_date?: string; // YYYY-MM-DD format
+  provider_type?: 'practitioner' | 'hospital' | 'dme' | 'asc';
+  units?: { [code: string]: number }; // Units per CPT code
 }
 
 export interface ValidationIssue {
-  type: 'ICD_FORMAT' | 'AOC_PRIMARY_MISSING' | 'MUE_EXCEEDED' | 'PTP_BLOCKED' | 'PTP_NEEDS_MODIFIER' | 'PTP_UNKNOWN_INDICATOR' | 'NEEDS_POLICY_CHECK' | 'AOC' | 'MUE' | 'PTP_BYPASSED';
+  type: 'ICD_FORMAT' | 'AOC_PRIMARY_MISSING' | 'MUE_EXCEEDED' | 'PTP_BLOCKED' | 'PTP_NEEDS_MODIFIER' | 'PTP_UNKNOWN_INDICATOR' | 'NEEDS_POLICY_CHECK' | 'AOC' | 'MUE' | 'PTP_BYPASSED' | 'MODIFIER_INVALID' | 'MODIFIER_INAPPROPRIATE' | 'POS_INVALID' | 'REVENUE_CODE_INVALID' | 'EFFECTIVE_DATE_INVALID' | 'FREQUENCY_EXCEEDED';
   message: string;
   data?: any;
 }
@@ -261,7 +273,7 @@ function sheetToJson(buf: Buffer): Array<{ name: string; rows: any[] }> {
   return out;
 }
 
-async function ingestPTP(client: PoolClient, zipPath: string): Promise<void> {
+async function ingestPTP(client: PoolClient, zipPath: string, providerType: string = 'hospital'): Promise<void> {
   const bufferRows: any[] = [];
   await extractZipEntries(zipPath, (fileName, buf) => {
     // Heuristics: find columns like Column1/Column2/ModifierIndicator in xlsx/csv.
@@ -277,42 +289,45 @@ async function ingestPTP(client: PoolClient, zipPath: string): Promise<void> {
           const mi = (r['Modifier\r\nIndicator\r\n0=not allowed\r\n1= allowed\r\n9= not applicable'] || 
                      r.ModifierIndicator || r['Modifier Indicator'] || r.MI || '').toString().trim();
           const eff = (r.EffectiveDate || r['Effective Date'] || '10-01-2025').toString().trim();
-          const provider = /practitioner|physician/i.test(fileName) ? 'practitioner'
-                         : /hospital|outpatient|opps/i.test(fileName) ? 'hospital' : 'hospital';
           bufferRows.push({
             column1: c1, column2: c2,
             modifier_indicator: mi || null,
             effective_date: eff || null,
-            provider_type: provider
+            provider_type: providerType
           });
         });
       });
     }
   });
 
-      // Clear existing data
-      await client.query('DELETE FROM claim_forge.ptp_edits');
+      // Clear existing data for this provider type only
+      await client.query('DELETE FROM claim_forge.ptp_edits WHERE provider_type = $1', [providerType]);
 
-  // Insert new data
+  // Insert new data using batch insert
   if (bufferRows.length > 0) {
+    const values = bufferRows.map((row, index) => {
+      const baseIndex = index * 5;
+      return `($${baseIndex + 1}, $${baseIndex + 2}, $${baseIndex + 3}, $${baseIndex + 4}, $${baseIndex + 5})`;
+    }).join(', ');
+    
     const insertQuery = `
       INSERT INTO claim_forge.ptp_edits (column1, column2, modifier_indicator, effective_date, provider_type)
-      VALUES ($1, $2, $3, $4, $5)
+      VALUES ${values}
     `;
     
-    for (const row of bufferRows) {
-      await client.query(insertQuery, [
-        row.column1,
-        row.column2,
-        row.modifier_indicator,
-        row.effective_date,
-        row.provider_type
-      ]);
-    }
+    const params = bufferRows.flatMap(row => [
+      row.column1,
+      row.column2,
+      row.modifier_indicator,
+      row.effective_date,
+      row.provider_type
+    ]);
+    
+    await client.query(insertQuery, params);
   }
 }
 
-async function ingestMUE(client: PoolClient, zipPath: string): Promise<void> {
+async function ingestMUE(client: PoolClient, zipPath: string, serviceType: string = 'dme'): Promise<void> {
   const bufferRows: any[] = [];
   await extractZipEntries(zipPath, (fileName, buf) => {
     if (/\.xlsx?$/i.test(fileName)) {
@@ -324,32 +339,35 @@ async function ingestMUE(client: PoolClient, zipPath: string): Promise<void> {
           const mue = parseInt(r['DME Supplier Services MUE Values'] || r.MUE || r['MUE Value'] || r['Practitioner Services MUE'] || r['Outpatient Hospital Services MUE'], 10);
           if (!code || !Number.isFinite(mue) || code === 'HCPCS/CPT Code') return; // Skip headers
           const eff = (r.EffectiveDate || r['Effective Date'] || '10-01-2025').toString().trim();
-          const st = /practitioner/i.test(fileName) ? 'practitioner'
-                   : /hospital|outpatient/i.test(fileName) ? 'hospital' : 'dme';
-          bufferRows.push({ hcpcs_cpt: code, mue_value: mue, effective_date: eff || null, service_type: st });
+          bufferRows.push({ hcpcs_cpt: code, mue_value: mue, effective_date: eff || null, service_type: serviceType });
         });
       });
     }
   });
 
-      // Clear existing data
-      await client.query('DELETE FROM claim_forge.mue');
+      // Clear existing data for this service type only
+      await client.query('DELETE FROM claim_forge.mue WHERE service_type = $1', [serviceType]);
 
-  // Insert new data
+  // Insert new data using batch insert
   if (bufferRows.length > 0) {
+    const values = bufferRows.map((row, index) => {
+      const baseIndex = index * 4;
+      return `($${baseIndex + 1}, $${baseIndex + 2}, $${baseIndex + 3}, $${baseIndex + 4})`;
+    }).join(', ');
+    
     const insertQuery = `
       INSERT INTO claim_forge.mue (hcpcs_cpt, mue_value, effective_date, service_type)
-      VALUES ($1, $2, $3, $4)
+      VALUES ${values}
     `;
     
-    for (const row of bufferRows) {
-      await client.query(insertQuery, [
-        row.hcpcs_cpt,
-        row.mue_value,
-        row.effective_date,
-        row.service_type
-      ]);
-    }
+    const params = bufferRows.flatMap(row => [
+      row.hcpcs_cpt,
+      row.mue_value,
+      row.effective_date,
+      row.service_type
+    ]);
+    
+    await client.query(insertQuery, params);
   }
 }
 
@@ -374,20 +392,25 @@ async function ingestAOC(client: PoolClient, zipPath: string): Promise<void> {
       // Clear existing data
       await client.query('DELETE FROM claim_forge.aoc');
 
-  // Insert new data
+  // Insert new data using batch insert
   if (bufferRows.length > 0) {
+    const values = bufferRows.map((row, index) => {
+      const baseIndex = index * 3;
+      return `($${baseIndex + 1}, $${baseIndex + 2}, $${baseIndex + 3})`;
+    }).join(', ');
+    
     const insertQuery = `
       INSERT INTO claim_forge.aoc (addon_code, primary_code, effective_date)
-      VALUES ($1, $2, $3)
+      VALUES ${values}
     `;
     
-    for (const row of bufferRows) {
-      await client.query(insertQuery, [
-        row.addon_code,
-        row.primary_code,
-        row.effective_date
-      ]);
-    }
+    const params = bufferRows.flatMap(row => [
+      row.addon_code,
+      row.primary_code,
+      row.effective_date
+    ]);
+    
+    await client.query(insertQuery, params);
   }
 }
 
@@ -399,30 +422,51 @@ export async function buildLatest({ verbose = false } = {}): Promise<{ dbPath: s
   const client = await initDb();
 
   try {
-    // find + download
-    const kinds = ['ptp', 'mue', 'aoc'];
+    // find + download all CMS data types
+    const dataTypes = ['ptp_hospital', 'ptp_practitioner', 'mue_hospital', 'mue_practitioner', 'mue_dme', 'aoc'];
     const latest: any = {};
-    for (const k of kinds) {
-      const link = await getLatestDownloadLink(CMS_PAGES[k as keyof typeof CMS_PAGES], k);
-      if (!link) throw new Error(`No download link found for ${k}`);
-      if (verbose) console.log(`[${k}] ${link.text} -> ${link.href}`);
-      latest[k] = await downloadTo(link.href, OUTDIR);
+    
+    for (const dataType of dataTypes) {
+      const link = await getLatestDownloadLink(CMS_PAGES[dataType as keyof typeof CMS_PAGES], dataType);
+      if (!link) {
+        if (verbose) console.log(`No download link found for ${dataType}, skipping...`);
+        continue;
+      }
+      if (verbose) console.log(`[${dataType}] ${link.text} -> ${link.href}`);
+      latest[dataType] = await downloadTo(link.href, OUTDIR);
     }
 
-    // ingest
-    if (verbose) console.log('Ingesting PTP...');
-    await ingestPTP(client, latest.ptp);
-    if (verbose) console.log('Ingesting MUE...');
-    await ingestMUE(client, latest.mue);
-    if (verbose) console.log('Ingesting AOC...');
-    await ingestAOC(client, latest.aoc);
+    // ingest all data types
+    if (latest.ptp_hospital && verbose) console.log('Ingesting Hospital PTP...');
+    if (latest.ptp_hospital) await ingestPTP(client, latest.ptp_hospital, 'hospital');
+    
+    if (latest.ptp_practitioner && verbose) console.log('Ingesting Practitioner PTP...');
+    if (latest.ptp_practitioner) await ingestPTP(client, latest.ptp_practitioner, 'practitioner');
+    
+    if (latest.mue_hospital && verbose) console.log('Ingesting Hospital MUE...');
+    if (latest.mue_hospital) await ingestMUE(client, latest.mue_hospital, 'hospital');
+    
+    if (latest.mue_practitioner && verbose) console.log('Ingesting Practitioner MUE...');
+    if (latest.mue_practitioner) await ingestMUE(client, latest.mue_practitioner, 'practitioner');
+    
+    if (latest.mue_dme && verbose) console.log('Ingesting DME MUE...');
+    if (latest.mue_dme) await ingestMUE(client, latest.mue_dme, 'dme');
+    
+    if (latest.aoc && verbose) console.log('Ingesting AOC...');
+    if (latest.aoc) await ingestAOC(client, latest.aoc);
 
-        if (verbose) {
-          const ptpCount = await client.query('SELECT COUNT(*) AS c FROM claim_forge.ptp_edits');
-          const mueCount = await client.query('SELECT COUNT(*) AS c FROM claim_forge.mue');
-          const aocCount = await client.query('SELECT COUNT(*) AS c FROM claim_forge.aoc');
-          console.log(`PTP rows: ${ptpCount.rows[0].c}, MUE rows: ${mueCount.rows[0].c}, AOC rows: ${aocCount.rows[0].c}`);
-        }
+    if (verbose) {
+      const ptpCount = await client.query('SELECT COUNT(*) AS c FROM claim_forge.ptp_edits');
+      const mueCount = await client.query('SELECT COUNT(*) AS c FROM claim_forge.mue');
+      const aocCount = await client.query('SELECT COUNT(*) AS c FROM claim_forge.aoc');
+      console.log(`PTP rows: ${ptpCount.rows[0].c}, MUE rows: ${mueCount.rows[0].c}, AOC rows: ${aocCount.rows[0].c}`);
+      
+      // Show provider type distribution
+      const ptpTypes = await client.query('SELECT provider_type, COUNT(*) AS c FROM claim_forge.ptp_edits GROUP BY provider_type');
+      const mueTypes = await client.query('SELECT service_type, COUNT(*) AS c FROM claim_forge.mue GROUP BY service_type');
+      console.log('PTP provider types:', ptpTypes.rows);
+      console.log('MUE service types:', mueTypes.rows);
+    }
     
     return { dbPath: 'postgresql', downloaded: latest };
   } finally {
@@ -431,10 +475,129 @@ export async function buildLatest({ verbose = false } = {}): Promise<{ dbPath: s
 }
 
 // -------------------------------
-// Validator
+// Helper Functions
 // -------------------------------
 async function getDbClient(): Promise<PoolClient> {
   return await pool.connect();
+}
+
+// Validate modifier syntax and appropriateness
+function validateModifiers(modifiers: string[]): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  
+  // Valid modifier patterns
+  const validModifierPattern = /^[A-Z0-9]{2}$/;
+  const numericModifiers = /^[0-9]{2}$/;
+  const alphaModifiers = /^[A-Z]{2}$/;
+  
+  for (const modifier of modifiers) {
+    // Check format
+    if (!validModifierPattern.test(modifier)) {
+      issues.push({
+        type: 'MODIFIER_INVALID',
+        message: `Invalid modifier format: ${modifier}. Modifiers must be 2 alphanumeric characters.`,
+        data: { modifier }
+      });
+      continue;
+    }
+    
+    // Check for inappropriate combinations (basic rules)
+    const upperModifier = modifier.toUpperCase();
+    
+    // Anatomical modifiers (E1-E4, FA-F9, LC, LD, RC, RT, etc.) should not be used together
+    const anatomicalModifiers = ['E1', 'E2', 'E3', 'E4', 'FA', 'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'LC', 'LD', 'RC', 'RT', 'LT', '50', '51', '52', '53', '54', '55', '56', '57', '58', '59', '62', '63', '66', '76', '77', '78', '79', '80', '81', '82'];
+    
+    if (anatomicalModifiers.includes(upperModifier)) {
+      // Check for conflicting anatomical modifiers (only check once per pair)
+      const conflictingModifiers = modifiers.filter(m => m !== modifier && anatomicalModifiers.includes(m.toUpperCase()));
+      if (conflictingModifiers.length > 0 && modifiers.indexOf(modifier) < modifiers.indexOf(conflictingModifiers[0])) {
+        issues.push({
+          type: 'MODIFIER_INAPPROPRIATE',
+          message: `Inappropriate modifier combination: ${modifier} conflicts with ${conflictingModifiers.join(', ')}`,
+          data: { modifier, conflictingModifiers }
+        });
+      }
+    }
+  }
+  
+  return issues;
+}
+
+// Validate place of service codes
+function validatePlaceOfService(pos: string): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  
+  if (!pos) return issues;
+  
+  // Valid POS codes (simplified list)
+  const validPOSCodes = [
+    '01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20',
+    '21', '22', '23', '24', '25', '26', '31', '32', '33', '34', '41', '42', '49', '50', '51', '52', '53', '54', '55', '56',
+    '57', '58', '59', '60', '61', '62', '65', '71', '72', '81', '82', '99'
+  ];
+  
+  if (!validPOSCodes.includes(pos)) {
+    issues.push({
+      type: 'POS_INVALID',
+      message: `Invalid place of service code: ${pos}`,
+      data: { pos }
+    });
+  }
+  
+  return issues;
+}
+
+// Validate revenue codes
+function validateRevenueCodes(revenueCodes: string[]): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  
+  if (!revenueCodes || revenueCodes.length === 0) return issues;
+  
+  for (const code of revenueCodes) {
+    // Revenue codes should be 3 digits
+    if (!/^[0-9]{3}$/.test(code)) {
+      issues.push({
+        type: 'REVENUE_CODE_INVALID',
+        message: `Invalid revenue code format: ${code}. Revenue codes must be 3 digits.`,
+        data: { code }
+      });
+    }
+  }
+  
+  return issues;
+}
+
+// Note: AI clinical validation has been moved to the Sanity Check Agent
+
+// Check effective dates
+async function validateEffectiveDates(client: PoolClient, claimDate: Date, providerType: string): Promise<ValidationIssue[]> {
+  const issues: ValidationIssue[] = [];
+  
+  try {
+    // Check if claim date is before any effective dates (rules not yet in effect)
+    const pastRules = await client.query(`
+      SELECT COUNT(*) as count 
+      FROM (
+        SELECT effective_date FROM claim_forge.ptp_edits WHERE provider_type = $1 AND effective_date > $2
+        UNION
+        SELECT effective_date FROM claim_forge.mue WHERE service_type = $1 AND effective_date > $2
+        UNION  
+        SELECT effective_date FROM claim_forge.aoc WHERE effective_date > $2
+      ) all_dates
+    `, [providerType, claimDate.toISOString().split('T')[0]]);
+    
+    if (parseInt(pastRules.rows[0].count) > 0) {
+      issues.push({
+        type: 'EFFECTIVE_DATE_INVALID',
+        message: 'Some validation rules are not yet in effect for this claim date.',
+        data: { futureRuleCount: pastRules.rows[0].count }
+      });
+    }
+  } catch (error) {
+    // Ignore date validation errors for now
+  }
+  
+  return issues;
 }
 
 /**
@@ -450,6 +613,28 @@ export async function validateClaim(claim: ClaimValidationInput, { providerType 
     const cptList = (claim.cpt_codes || []).map(code => ({ code: code.trim() }))
                                      .filter(c => !!c.code);
     const icdList = (claim.icd10_codes || []).map(s => s.trim()).filter(Boolean);
+    
+    // Use claim provider type if provided, otherwise use parameter
+    const actualProviderType = claim.provider_type || providerType;
+    
+    // Validate claim date
+    const claimDate = claim.claim_date ? new Date(claim.claim_date) : new Date();
+
+    // 0) Basic format validations
+    const modifierIssues = validateModifiers(claim.modifiers || []);
+    errors.push(...modifierIssues.filter(i => i.type === 'MODIFIER_INVALID'));
+    warnings.push(...modifierIssues.filter(i => i.type === 'MODIFIER_INAPPROPRIATE'));
+    
+    const posIssues = validatePlaceOfService(claim.place_of_service || '');
+    errors.push(...posIssues);
+    
+    const revenueIssues = validateRevenueCodes(claim.revenue_codes || []);
+    errors.push(...revenueIssues);
+    
+    const dateIssues = await validateEffectiveDates(client, claimDate, actualProviderType);
+    warnings.push(...dateIssues);
+    
+    // Note: AI clinical validation is now handled by the Sanity Check Agent
 
     // 1) ICD sanity (format only)
     const icdBad = icdList.filter(code => !/^[A-TV-Z][0-9][0-9A-Z](?:\.[0-9A-Z]{1,4})?$/.test(code));
@@ -478,16 +663,17 @@ export async function validateClaim(claim: ClaimValidationInput, { providerType 
       }
     }
 
-        // 3) MUE: check units (assuming 1 unit per code for now)
+        // 3) MUE: check units with actual units from claim
         for (const c of cptList) {
-          const mueResult = await client.query('SELECT mue_value FROM claim_forge.mue WHERE hcpcs_cpt = $1 AND (service_type IS NULL OR service_type = $2)', [c.code, providerType]);
+          const mueResult = await client.query('SELECT mue_value FROM claim_forge.mue WHERE hcpcs_cpt = $1 AND (service_type IS NULL OR service_type = $2)', [c.code, actualProviderType]);
       const row = mueResult.rows[0] as { mue_value: number } | undefined;
       if (row && Number.isFinite(row.mue_value)) {
-        const units = 1; // Default to 1 unit per code
+        // Use actual units from claim if provided, otherwise default to 1
+        const units = claim.units && claim.units[c.code] ? claim.units[c.code] : 1;
         if (units > row.mue_value) {
           errors.push({
             type: 'MUE_EXCEEDED',
-            message: `CPT ${c.code} units ${units} exceed MUE limit ${row.mue_value} for ${providerType}.`,
+            message: `CPT ${c.code} units ${units} exceed MUE limit ${row.mue_value} for ${actualProviderType}.`,
             data: { code: c.code, units, mue: row.mue_value }
           });
         } else {
@@ -506,7 +692,7 @@ export async function validateClaim(claim: ClaimValidationInput, { providerType 
               SELECT modifier_indicator
               FROM claim_forge.ptp_edits
               WHERE column1 = $1 AND column2 = $2 AND (provider_type IS NULL OR provider_type = $3)
-            `, [c1, c2, providerType]);
+            `, [c1, c2, actualProviderType]);
         
         const row = ptpResult.rows[0] as { modifier_indicator: string } | undefined;
         if (!row) continue;
@@ -517,7 +703,7 @@ export async function validateClaim(claim: ClaimValidationInput, { providerType 
         if (indicator === '0' || indicator === 'N') {
           errors.push({
             type: 'PTP_BLOCKED',
-            message: `PTP edit blocks billing ${c1}+${c2} together for ${providerType} (modifier indicator ${indicator}).`,
+            message: `PTP edit blocks billing ${c1}+${c2} together for ${actualProviderType} (modifier indicator ${indicator}).`,
             data: { c1, c2, indicator }
           });
         } else if (indicator === '1' || indicator === 'Y') {
@@ -545,12 +731,28 @@ export async function validateClaim(claim: ClaimValidationInput, { providerType 
       }
     }
 
-    // 5) Medical necessity (CPT↔ICD): policy-specific
+    // 5) Policy validation (CPT↔ICD↔Payer): medical necessity and coverage
     if (icdList.length && cptList.length) {
+      const policyValidationDetails = {
+        cpt_codes: cptList.map(c => c.code),
+        icd10_codes: icdList,
+        provider_type: actualProviderType,
+        claim_date: claimDate.toISOString().split('T')[0],
+        note_summary: claim.note_summary || 'No clinical notes provided',
+        validation_types: ['Medical Necessity', 'Policy Coverage', 'LCD/NCD Research', 'Payer-Specific Rules'],
+        research_questions: [
+          `Are there any Local Coverage Determinations (LCD) or National Coverage Determinations (NCD) that apply to CPT ${cptList.map(c => c.code).join(', ')} with diagnosis ${icdList.join(', ')}?`,
+          `What are the coverage criteria for CPT ${cptList.map(c => c.code).join(', ')} with diagnosis ${icdList.join(', ')}?`,
+          `What documentation requirements exist for CPT ${cptList.map(c => c.code).join(', ')} with ${icdList.join(', ')}?`,
+          `Are there any commercial payer policies that affect coverage for these codes?`,
+          `What are the medical necessity requirements for this CPT/ICD combination?`
+        ]
+      };
+
       warnings.push({
         type: 'NEEDS_POLICY_CHECK',
-        message: 'CPT↔ICD medical necessity requires payer-specific policy (LCD/NCD or commercial policy) validation.',
-        data: { payerPolices: 'Plug in your LCD/NCD/commercial rule engine or AI policy checker.' }
+        message: `Policy validation required for CPT ${cptList.map(c => c.code).join(', ')} with ICD-10 ${icdList.join(', ')}. This requires payer-specific policy research.`,
+        data: policyValidationDetails
       });
     }
 
@@ -573,12 +775,24 @@ export async function isDatabaseBuilt(): Promise<boolean> {
   try {
     const client = await pool.connect();
     try {
-      const result = await client.query('SELECT COUNT(*) FROM claim_forge.ptp_edits');
-      return result.rows[0].count > 0;
+      // Check if schema exists first
+      const schemaResult = await client.query("SELECT schema_name FROM information_schema.schemata WHERE schema_name = 'claim_forge'");
+      if (schemaResult.rows.length === 0) {
+        return false;
+      }
+      
+      // Check if any of the tables have data
+      const ptpResult = await client.query('SELECT COUNT(*) FROM claim_forge.ptp_edits');
+      const mueResult = await client.query('SELECT COUNT(*) FROM claim_forge.mue');
+      const aocResult = await client.query('SELECT COUNT(*) FROM claim_forge.aoc');
+      
+      // Database is built if any table has data
+      return ptpResult.rows[0].count > 0 || mueResult.rows[0].count > 0 || aocResult.rows[0].count > 0;
     } finally {
       client.release();
     }
   } catch (error) {
+    console.log('Database check failed:', error instanceof Error ? error.message : String(error));
     return false;
   }
 }

@@ -12,7 +12,7 @@ async function testCMSNCCI() {
     console.log('1. Checking database status...');
     if (!(await isDatabaseBuilt())) {
       console.log('   Database not found. Building...');
-      await buildLatest({ verbose: true });
+      throw new Error('CMS/NCCI database not available. Run npm run update:cms to build the database.');
       console.log('   ✅ Database built successfully');
     } else {
       console.log('   ✅ Database already exists');

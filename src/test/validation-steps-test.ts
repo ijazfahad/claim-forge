@@ -65,7 +65,7 @@ class ValidationStepsTest {
       // Ensure database is built
       if (!(await isDatabaseBuilt())) {
         console.log('   Building CMS/NCCI database...');
-        await buildLatest({ verbose: true });
+        throw new Error('CMS/NCCI database not available. Run npm run update:cms to build the database.');
       }
 
       const result = await validateClaim({
