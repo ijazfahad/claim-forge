@@ -49,6 +49,8 @@ const testCases: TestCase[] = [
       },
       ai_clinical_validation: {
         overall_appropriate: true,
+        specialty: 'Internal Medicine',
+        subspecialty: 'General',
         cpt_validation: [{
           code: '99213',
           appropriate: true,
@@ -118,6 +120,8 @@ const testCases: TestCase[] = [
       },
       ai_clinical_validation: {
         overall_appropriate: true,
+        specialty: 'Internal Medicine',
+        subspecialty: 'General',
         cpt_validation: [
           {
             code: '99215',
@@ -219,6 +223,8 @@ const testCases: TestCase[] = [
       },
       ai_clinical_validation: {
         overall_appropriate: true,
+        specialty: 'Emergency Medicine',
+        subspecialty: 'General',
         cpt_validation: [{
           code: '99284',
           appropriate: true,

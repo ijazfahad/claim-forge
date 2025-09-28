@@ -219,6 +219,8 @@ class ValidationStepsTest {
         },
         ai_clinical_validation: {
           overall_appropriate: true,
+          specialty: 'Internal Medicine',
+          subspecialty: 'General',
           cpt_validation: [],
           icd_validation: [],
           modifier_validation: [],

@@ -86,7 +86,7 @@ const testCases: TestCase[] = [
     expectedResults: {
       is_valid: false, // GPT-5-mini is stricter about documentation
       ai_clinical_appropriate: false, // GPT-5-mini is stricter about documentation
-      documentation_quality: 'poor', // GPT-5-mini rates documentation more strictly
+      documentation_quality: 'poor', // GPT-5-mini rates this as poor
       policy_check_required: true,
       cms_ncci_valid: true
     }
@@ -102,8 +102,8 @@ const testCases: TestCase[] = [
     },
     expectedResults: {
       is_valid: true, // GPT-5-mini marks this as true
-      ai_clinical_appropriate: true, // GPT-5-mini marks this as true
-      documentation_quality: 'adequate', // GPT-5-mini rates ED documentation as adequate
+      ai_clinical_appropriate: true, // GPT-5-mini marks this as appropriate
+      documentation_quality: 'adequate', // GPT-5-mini rates this as adequate
       policy_check_required: true,
       cms_ncci_valid: true
     }
@@ -259,6 +259,8 @@ class SanityCheckAgentTestSuite {
     console.log(`    📊 Results:`);
     console.log(`      - Valid: ${actual.is_valid}`);
     console.log(`      - AI Clinical Appropriate: ${actual.ai_clinical_validation?.overall_appropriate || 'N/A'}`);
+    console.log(`      - Specialty: ${actual.ai_clinical_validation?.specialty || 'N/A'}`);
+    console.log(`      - Subspecialty: ${actual.ai_clinical_validation?.subspecialty || 'N/A'}`);
     console.log(`      - Documentation Quality: ${actual.ai_clinical_validation?.documentation_quality || 'N/A'}`);
     console.log(`      - Policy Check Required: ${actual.policy_check_required}`);
     console.log(`      - CMS/NCCI Valid: ${actual.cms_ncci_validation?.is_valid || 'N/A'}`);

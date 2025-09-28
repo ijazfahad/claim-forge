@@ -21,6 +21,8 @@ export interface SanityCheckResult {
   };
   ai_clinical_validation: {
     overall_appropriate: boolean;
+    specialty: string;
+    subspecialty: string;
     cpt_validation: Array<{
       code: string;
       appropriate: boolean;
@@ -158,9 +160,34 @@ Output Format:
     // Step 2: CMS/NCCI Rules Validation
     let cmsNcciValidation: ValidationResult;
     try {
-      if (!(await isDatabaseBuilt())) {
-        console.log('CMS/NCCI database not found. Please run: npm run update:cms');
-        throw new Error('CMS/NCCI database not available. Run npm run update:cms to build the database.');
+      // Retry database connection up to 3 times
+      let retryCount = 0;
+      const maxRetries = 3;
+      
+      while (retryCount < maxRetries) {
+        try {
+          if (!(await isDatabaseBuilt())) {
+            retryCount++;
+            if (retryCount < maxRetries) {
+              console.log(`Database connection failed, retrying... (${retryCount}/${maxRetries})`);
+              await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
+              continue;
+            } else {
+              console.log('CMS/NCCI database connection failed after retries. Please check database connectivity.');
+              throw new Error('CMS/NCCI database connection failed after retries. Check database connectivity.');
+            }
+          }
+          break;
+        } catch (dbError) {
+          retryCount++;
+          if (retryCount < maxRetries) {
+            console.log(`Database connection error, retrying... (${retryCount}/${maxRetries}):`, dbError);
+            await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
+            continue;
+          } else {
+            throw dbError;
+          }
+        }
       }
       
       cmsNcciValidation = await validateClaim({
@@ -189,8 +216,8 @@ Output Format:
       is_valid: cmsNcciValidation.is_valid && aiClinicalValidation.overall_appropriate,
       sanitized_payload: payload,
       ssp_prediction: {
-        specialty: 'General Practice', // Basic prediction based on CPT codes
-        subspecialty: 'Primary Care',
+        specialty: aiClinicalValidation.specialty,
+        subspecialty: aiClinicalValidation.subspecialty,
         confidence: 'medium'
       },
       issues: cmsNcciValidation.errors.map(e => e.message),
@@ -249,10 +276,15 @@ Output Format:
     clinical_concerns: string[];
     documentation_quality: string;
     recommendations: string[];
+  } & {
+    specialty: string;
+    subspecialty: string;
   }> {
     if (!payload.note_summary || payload.note_summary.trim() === '') {
       return {
         overall_appropriate: false,
+        specialty: 'Unknown',
+        subspecialty: 'Unknown',
         cpt_validation: payload.cpt_codes.map(code => ({
           code,
           appropriate: false,
@@ -302,9 +334,13 @@ CLAIM CONTEXT:
 
 Evaluate all the CPT codes, ICD-10 codes, Place of Service (POS), note summary, and modifiers to see if they look correct, plausible, and correspond to the doctor's note. Evaluate all the codes and check if they are correct or not, providing suggestions for any incorrect ICD-10 codes, CPT codes, place of service and modifiers.
 
+Also predict the medical specialty and subspecialty based on the CPT codes, ICD-10 codes, and clinical context.
+
 Respond with ONLY valid JSON (no markdown, no explanations, no unescaped quotes):
 {
   "overall_appropriate": boolean,
+  "specialty": "string",
+  "subspecialty": "string",
   "cpt_validation": [{"code": "string", "appropriate": boolean, "confidence": "low|medium|high", "reasoning": "string", "suggested_code": "string|null"}],
   "icd_validation": [{"code": "string", "appropriate": boolean, "confidence": "low|medium|high", "reasoning": "string", "suggested_code": "string|null"}],
   "modifier_validation": [{"code": "string", "appropriate": boolean, "confidence": "low|medium|high", "reasoning": "string", "suggested_code": "string|null"}],
@@ -409,6 +445,8 @@ MODIFIER VALIDATION GUIDELINES:
       // Fallback to basic validation
       return {
         overall_appropriate: false,
+        specialty: 'Unknown',
+        subspecialty: 'Unknown',
         cpt_validation: payload.cpt_codes.map(code => ({
           code,
           appropriate: false,
