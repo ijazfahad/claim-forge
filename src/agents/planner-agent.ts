@@ -107,10 +107,7 @@ OUTPUT SHAPE:
 }
 `;
 
-    const tools = [
-      this.createCacheTool(),
-      this.createGetCacheTool(),
-    ];
+    const tools: any[] = [];
 
     this.agent = this.createAgent('Planner Agent', instructions, tools);
   }
@@ -139,6 +136,7 @@ Generate validation questions for this medical claim:
 Claim Payload:
 - CPT Codes: ${payload.cpt_codes.join(', ')}
 - ICD-10 Codes: ${payload.icd10_codes.join(', ')}
+- Modifiers: ${(payload.modifiers || []).join(', ') || 'None'}
 - Notes: ${payload.note_summary}
 - Payer: ${payload.payer}
 - Place of Service: ${payload.place_of_service || 'Not specified'}
@@ -159,6 +157,8 @@ STEP 1 - AI CLINICAL REVIEW (COMPLETED):
 - Documentation Quality: ${sanityResult.ai_clinical_validation?.documentation_quality || 'Unknown'}
 - CPT Validation: ${sanityResult.ai_clinical_validation?.cpt_validation?.map((c: any) => `${c.code}: ${c.appropriate ? '✓' : '✗'} (${c.confidence})`).join(', ') || 'N/A'}
 - ICD Validation: ${sanityResult.ai_clinical_validation?.icd_validation?.map((i: any) => `${i.code}: ${i.appropriate ? '✓' : '✗'} (${i.confidence})`).join(', ') || 'N/A'}
+- Modifier Validation: ${sanityResult.ai_clinical_validation?.modifier_validation?.map((m: any) => `${m.code}: ${m.appropriate ? '✓' : '✗'} (${m.confidence})`).join(', ') || 'N/A'}
+- Place of Service Validation: ${sanityResult.ai_clinical_validation?.place_of_service_validation ? `${sanityResult.ai_clinical_validation.place_of_service_validation.code}: ${sanityResult.ai_clinical_validation.place_of_service_validation.appropriate ? '✓' : '✗'} (${sanityResult.ai_clinical_validation.place_of_service_validation.confidence})` : 'N/A'}
 - Clinical Concerns: ${sanityResult.ai_clinical_validation?.clinical_concerns?.join(', ') || 'None'}
 - Recommendations: ${sanityResult.ai_clinical_validation?.recommendations?.join(', ') || 'None'}
 

@@ -1,4 +1,4 @@
-import { Agent, run } from '@openai/agents';
+import { Agent, run, Tool } from '@openai/agents';
 import { FirecrawlService } from '../services/firecrawl-service';
 import { GoogleSearchService } from '../services/google-search';
 import { RedisService } from '../services/redis-service';
@@ -47,7 +47,20 @@ export abstract class BaseAgent {
   protected async executeAgent(agent: Agent, input: string): Promise<any> {
     try {
       const result = await run(agent, input);
-      return JSON.parse(result.finalOutput || '{}');
+      let responseText = result.finalOutput || '{}';
+      
+      // Remove markdown code blocks if present
+      responseText = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+      
+      // Find JSON object boundaries
+      const jsonStart = responseText.indexOf('{');
+      const jsonEnd = responseText.lastIndexOf('}') + 1;
+      
+      if (jsonStart !== -1 && jsonEnd > jsonStart) {
+        responseText = responseText.substring(jsonStart, jsonEnd);
+      }
+      
+      return JSON.parse(responseText);
     } catch (error) {
       console.error('Error executing agent:', error);
       throw error;

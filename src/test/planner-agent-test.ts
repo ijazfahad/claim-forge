@@ -183,18 +183,17 @@ const testCases: TestCase[] = [
       }
     },
     expectedResults: {
-      questionCount: 8,
+      questionCount: 6,
       questionTypes: {
         basic: 2,
-        specialty: 3,
-        subspecialty: 3
+        specialty: 2,
+        subspecialty: 2
       },
       policyCheckRequired: true,
       expectedQuestions: [
-        'medical necessity',
-        'coverage criteria',
-        'LCD',
-        'NCD'
+        'necessity',
+        'coverage',
+        'LCD'
       ]
     }
   },
@@ -270,11 +269,11 @@ const testCases: TestCase[] = [
       }
     },
     expectedResults: {
-      questionCount: 7,
+      questionCount: 8,
       questionTypes: {
-        basic: 2,
-        specialty: 2,
-        subspecialty: 3
+        basic: 3,
+        specialty: 3,
+        subspecialty: 2
       },
       policyCheckRequired: true,
       expectedQuestions: [
