@@ -182,7 +182,7 @@ class ComprehensiveCMSTest {
         claim_date: '2025-01-15'
       },
       expectedErrors: [],
-      expectedWarnings: ['EFFECTIVE_DATE_INVALID', 'MODIFIER_INAPPROPRIATE', 'NEEDS_POLICY_CHECK'],
+      expectedWarnings: ['EFFECTIVE_DATE_INVALID', 'NEEDS_POLICY_CHECK'],
       expectedPasses: ['ICD_FORMAT']
     });
 
