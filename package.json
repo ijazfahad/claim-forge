@@ -12,6 +12,7 @@
     "test:sanity": "ts-node src/test/test-runner.ts sanity",
     "test:planner": "ts-node src/test/test-runner.ts planner",
     "test:google-search-agent": "ts-node src/test/test-runner.ts google-search-agent",
+    "test:firecrawl-agent": "ts-node src/test/test-runner.ts firecrawl-agent",
     "test:research": "ts-node src/test/test-runner.ts research",
     "test:evaluate": "ts-node src/test/test-runner.ts evaluate",
     "test:integration": "ts-node src/test/test-runner.ts integration",
