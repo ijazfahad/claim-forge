@@ -5,6 +5,7 @@ import { runEvaluateAgentTests } from './evaluate-agent-test';
 import { runIntegrationTests } from './integration-test';
 import { runGoogleSearchTests } from './google-search-test';
 import { runFirecrawlTests } from './firecrawl-test';
+import { GoogleSearchAgentTestSuite } from './google-search-agent-test';
 
 /**
  * Master test runner for all validation workflow tests
@@ -42,6 +43,14 @@ const testSuites: TestSuite[] = [
     name: 'Google Search Service',
     description: 'Tests Google Search API functionality for medical coding',
     run: runGoogleSearchTests
+  },
+  {
+    name: 'Google Search Agent',
+    description: 'Tests Google Search Agent with Planner Agent output',
+    run: async () => {
+      const testSuite = new GoogleSearchAgentTestSuite();
+      await testSuite.runTests();
+    }
   },
   {
     name: 'Firecrawl Service',

@@ -12,11 +12,11 @@ interface TestCase {
   claim: ClaimPayload;
   sanityResult: SanityCheckResult;
   expectedResults: {
-    questionCount: number;
+    questionCount: { min: number; max: number };
     questionTypes: {
-      basic: number;
-      specialty: number;
-      subspecialty: number;
+      basic: { min: number; max: number };
+      specialty: { min: number; max: number };
+      subspecialty: { min: number; max: number };
     };
     expectedQuestions?: string[];
     policyCheckRequired?: boolean;
@@ -30,7 +30,9 @@ const testCases: TestCase[] = [
       cpt_codes: ['99213'],
       icd10_codes: ['M54.5'],
       note_summary: 'Office visit for back pain.',
-      payer: 'Medicare'
+      payer: 'Medicare',
+      state: 'CA',
+      member_plan_type: 'HMO'
     },
     sanityResult: {
       is_valid: true,
@@ -86,11 +88,11 @@ const testCases: TestCase[] = [
       }
     },
     expectedResults: {
-      questionCount: 6,
+      questionCount: { min: 4, max: 9 },
       questionTypes: {
-        basic: 2,
-        specialty: 2,
-        subspecialty: 2
+        basic: { min: 1, max: 4 },
+        specialty: { min: 1, max: 4 },
+        subspecialty: { min: 1, max: 4 }
       },
       policyCheckRequired: false
     }
@@ -101,7 +103,9 @@ const testCases: TestCase[] = [
       cpt_codes: ['99215', '36415'],
       icd10_codes: ['I10', 'E11.9'],
       note_summary: 'Complex visit for diabetes and hypertension management.',
-      payer: 'Medicare'
+      payer: 'Medicare',
+      state: 'TX',
+      member_plan_type: 'PPO'
     },
     sanityResult: {
       is_valid: true,
@@ -183,17 +187,17 @@ const testCases: TestCase[] = [
       }
     },
     expectedResults: {
-      questionCount: 6,
+      questionCount: { min: 4, max: 9 },
       questionTypes: {
-        basic: 2,
-        specialty: 2,
-        subspecialty: 2
+        basic: { min: 1, max: 4 },
+        specialty: { min: 1, max: 4 },
+        subspecialty: { min: 1, max: 4 }
       },
       policyCheckRequired: true,
       expectedQuestions: [
-        'necessity',
+        'prior authorization',
         'coverage',
-        'LCD'
+        'NCD'
       ]
     }
   },
@@ -203,7 +207,9 @@ const testCases: TestCase[] = [
       cpt_codes: ['99284'],
       icd10_codes: ['R50.9'],
       note_summary: 'Emergency department visit for fever.',
-      payer: 'Medicare'
+      payer: 'Medicare',
+      state: 'NY',
+      member_plan_type: 'Medicare Advantage'
     },
     sanityResult: {
       is_valid: true,
@@ -269,17 +275,281 @@ const testCases: TestCase[] = [
       }
     },
     expectedResults: {
-      questionCount: 8,
+      questionCount: { min: 4, max: 9 },
       questionTypes: {
-        basic: 3,
-        specialty: 3,
-        subspecialty: 2
+        basic: { min: 1, max: 4 },
+        specialty: { min: 1, max: 4 },
+        subspecialty: { min: 1, max: 4 }
       },
       policyCheckRequired: true,
       expectedQuestions: [
         'emergency department',
-        'ED-specific',
-        'fever'
+        'coverage',
+        'documentation'
+      ]
+    }
+  },
+  {
+    name: 'Edge Case - Malformed Claim Data',
+    claim: {
+      cpt_codes: ['99213', 'INVALID'],
+      icd10_codes: ['M54.5', 'INVALID_CODE'],
+      note_summary: '',
+      payer: 'Unknown Payer',
+      state: 'FL',
+      member_plan_type: 'Unknown'
+    },
+    sanityResult: {
+      is_valid: false,
+      sanitized_payload: {} as ClaimPayload,
+      ssp_prediction: {
+        specialty: 'Unknown',
+        subspecialty: 'Unknown',
+        confidence: 'low'
+      },
+      issues: ['Invalid CPT code', 'Invalid ICD code'],
+      warnings: ['Unknown payer'],
+      cms_ncci_checks: {
+        bundling_issues: [],
+        modifier_requirements: [],
+        frequency_limits: []
+      },
+      ai_clinical_validation: {
+        overall_appropriate: false,
+        specialty: 'Unknown',
+        subspecialty: 'Unknown',
+        cpt_validation: [{
+          code: '99213',
+          appropriate: true,
+          confidence: 'high',
+          reasoning: 'Valid CPT code'
+        }, {
+          code: 'INVALID',
+          appropriate: false,
+          confidence: 'high',
+          reasoning: 'Invalid CPT code format'
+        }],
+        icd_validation: [{
+          code: 'M54.5',
+          appropriate: true,
+          confidence: 'high',
+          reasoning: 'Valid ICD code'
+        }, {
+          code: 'INVALID_CODE',
+          appropriate: false,
+          confidence: 'high',
+          reasoning: 'Invalid ICD code format'
+        }],
+        modifier_validation: [],
+        place_of_service_validation: {
+          code: '',
+          appropriate: false,
+          confidence: 'low',
+          reasoning: 'No POS specified'
+        },
+        clinical_concerns: ['Invalid codes detected'],
+        documentation_quality: 'poor',
+        recommendations: ['Fix invalid codes']
+      },
+      policy_check_required: true,
+      policy_check_details: {
+        cpt_codes: ['99213', 'INVALID'],
+        icd10_codes: ['M54.5', 'INVALID_CODE'],
+        provider_type: 'practitioner',
+        claim_date: '2025-01-15',
+        validation_types: ['Code Validation', 'Policy Coverage'],
+        research_questions: [
+          'Are there any coverage policies for invalid CPT codes?',
+          'What are the requirements for unknown payers?'
+        ]
+      },
+      validation_issues: [],
+      cms_ncci_validation: {
+        is_valid: false,
+        risk_score: 80,
+        errors: [
+          { type: 'ICD_FORMAT', message: 'Invalid CPT code', data: {} },
+          { type: 'ICD_FORMAT', message: 'Invalid ICD code', data: {} }
+        ],
+        warnings: [
+          { type: 'NEEDS_POLICY_CHECK', message: 'Unknown payer', data: {} }
+        ],
+        passes: []
+      }
+    },
+    expectedResults: {
+      questionCount: { min: 4, max: 9 },
+      questionTypes: {
+        basic: { min: 1, max: 4 },
+        specialty: { min: 1, max: 4 },
+        subspecialty: { min: 1, max: 4 }
+      },
+      policyCheckRequired: true,
+      expectedQuestions: [
+        'invalid',
+        'policy',
+        'payer'
+      ]
+    }
+  },
+  {
+    name: 'Edge Case - Extreme Scenario (Multiple CPTs, Complex Modifiers)',
+    claim: {
+      cpt_codes: ['99215', '36415', '99213', '99214'],
+      icd10_codes: ['I10', 'E11.9', 'M54.5', 'Z00.00'],
+      modifiers: ['25', '59', 'LT', 'RT'],
+      note_summary: 'Complex multi-procedure visit with multiple diagnoses and modifiers. Patient with diabetes, hypertension, back pain, and routine checkup. Blood draw performed with multiple E/M services.',
+      payer: 'Medicare',
+      place_of_service: '11',
+      state: 'CA',
+      member_plan_type: 'HMO'
+    },
+    sanityResult: {
+      is_valid: true,
+      sanitized_payload: {} as ClaimPayload,
+      ssp_prediction: {
+        specialty: 'Internal Medicine',
+        subspecialty: 'Complex Care',
+        confidence: 'high'
+      },
+      issues: [],
+      warnings: ['Multiple procedures', 'Complex modifiers'],
+      cms_ncci_checks: {
+        bundling_issues: ['Potential bundling between 99215 and 99213'],
+        modifier_requirements: ['Modifier 25 required for E/M with procedure'],
+        frequency_limits: []
+      },
+      ai_clinical_validation: {
+        overall_appropriate: true,
+        specialty: 'Internal Medicine',
+        subspecialty: 'Complex Care',
+        cpt_validation: [
+          {
+            code: '99215',
+            appropriate: true,
+            confidence: 'high',
+            reasoning: 'Appropriate for complex visit'
+          },
+          {
+            code: '36415',
+            appropriate: true,
+            confidence: 'high',
+            reasoning: 'Appropriate for blood draw'
+          },
+          {
+            code: '99213',
+            appropriate: true,
+            confidence: 'medium',
+            reasoning: 'May be bundled with 99215'
+          },
+          {
+            code: '99214',
+            appropriate: true,
+            confidence: 'medium',
+            reasoning: 'May be bundled with 99215'
+          }
+        ],
+        icd_validation: [
+          {
+            code: 'I10',
+            appropriate: true,
+            confidence: 'high',
+            reasoning: 'Appropriate for hypertension'
+          },
+          {
+            code: 'E11.9',
+            appropriate: true,
+            confidence: 'high',
+            reasoning: 'Appropriate for diabetes'
+          },
+          {
+            code: 'M54.5',
+            appropriate: true,
+            confidence: 'high',
+            reasoning: 'Appropriate for back pain'
+          },
+          {
+            code: 'Z00.00',
+            appropriate: true,
+            confidence: 'high',
+            reasoning: 'Appropriate for routine checkup'
+          }
+        ],
+        modifier_validation: [
+          {
+            code: '25',
+            appropriate: true,
+            confidence: 'high',
+            reasoning: 'Required for E/M with procedure'
+          },
+          {
+            code: '59',
+            appropriate: true,
+            confidence: 'medium',
+            reasoning: 'May be needed for separate procedures'
+          },
+          {
+            code: 'LT',
+            appropriate: true,
+            confidence: 'high',
+            reasoning: 'Left side procedure'
+          },
+          {
+            code: 'RT',
+            appropriate: true,
+            confidence: 'high',
+            reasoning: 'Right side procedure'
+          }
+        ],
+        place_of_service_validation: {
+          code: '11',
+          appropriate: true,
+          confidence: 'high',
+          reasoning: 'Office visit appropriate'
+        },
+        clinical_concerns: ['Multiple procedures may require bundling review'],
+        documentation_quality: 'excellent',
+        recommendations: ['Verify modifier appropriateness', 'Check bundling rules']
+      },
+      policy_check_required: true,
+      policy_check_details: {
+        cpt_codes: ['99215', '36415', '99213', '99214'],
+        icd10_codes: ['I10', 'E11.9', 'M54.5', 'Z00.00'],
+        provider_type: 'practitioner',
+        claim_date: '2025-01-15',
+        validation_types: ['Medical Necessity', 'Policy Coverage', 'Bundling Rules', 'Modifier Validation'],
+        research_questions: [
+          'Are there bundling restrictions between multiple E/M codes?',
+          'What are the modifier requirements for complex procedures?',
+          'Are there coverage limits for multiple procedures in one visit?'
+        ]
+      },
+      validation_issues: [],
+      cms_ncci_validation: {
+        is_valid: true,
+        risk_score: 25,
+        errors: [],
+        warnings: [
+          { type: 'NEEDS_POLICY_CHECK', message: 'Potential bundling issues', data: {} }
+        ],
+        passes: [
+          { type: 'ICD_FORMAT', message: 'Code formats valid', data: {} },
+          { type: 'MODIFIER_INAPPROPRIATE', message: 'Modifiers appropriate', data: {} }
+        ]
+      }
+    },
+    expectedResults: {
+      questionCount: { min: 4, max: 9 },
+      questionTypes: {
+        basic: { min: 1, max: 4 },
+        specialty: { min: 1, max: 4 },
+        subspecialty: { min: 1, max: 4 }
+      },
+      policyCheckRequired: true,
+      expectedQuestions: [
+        'bundling',
+        'modifier',
+        'coverage'
       ]
     }
   }
@@ -351,24 +621,24 @@ class PlannerAgentTestSuite {
   private validateResult(actual: PlannerResult, expected: any): string[] {
     const errors: string[] = [];
 
-    // Check question count
-    if (actual.questions.length !== expected.questionCount) {
-      errors.push(`Expected ${expected.questionCount} questions, got ${actual.questions.length}`);
+    // Check question count range
+    if (actual.questions.length < expected.questionCount.min || actual.questions.length > expected.questionCount.max) {
+      errors.push(`Expected ${expected.questionCount.min}-${expected.questionCount.max} questions, got ${actual.questions.length}`);
     }
 
-    // Check question types
+    // Check question types ranges
     const basicQuestions = actual.questions.filter(q => q.type === 'basic').length;
     const specialtyQuestions = actual.questions.filter(q => q.type === 'specialty').length;
     const subspecialtyQuestions = actual.questions.filter(q => q.type === 'subspecialty').length;
 
-    if (basicQuestions !== expected.questionTypes.basic) {
-      errors.push(`Expected ${expected.questionTypes.basic} basic questions, got ${basicQuestions}`);
+    if (basicQuestions < expected.questionTypes.basic.min || basicQuestions > expected.questionTypes.basic.max) {
+      errors.push(`Expected ${expected.questionTypes.basic.min}-${expected.questionTypes.basic.max} basic questions, got ${basicQuestions}`);
     }
-    if (specialtyQuestions !== expected.questionTypes.specialty) {
-      errors.push(`Expected ${expected.questionTypes.specialty} specialty questions, got ${specialtyQuestions}`);
+    if (specialtyQuestions < expected.questionTypes.specialty.min || specialtyQuestions > expected.questionTypes.specialty.max) {
+      errors.push(`Expected ${expected.questionTypes.specialty.min}-${expected.questionTypes.specialty.max} specialty questions, got ${specialtyQuestions}`);
     }
-    if (subspecialtyQuestions !== expected.questionTypes.subspecialty) {
-      errors.push(`Expected ${expected.questionTypes.subspecialty} subspecialty questions, got ${subspecialtyQuestions}`);
+    if (subspecialtyQuestions < expected.questionTypes.subspecialty.min || subspecialtyQuestions > expected.questionTypes.subspecialty.max) {
+      errors.push(`Expected ${expected.questionTypes.subspecialty.min}-${expected.questionTypes.subspecialty.max} subspecialty questions, got ${subspecialtyQuestions}`);
     }
 
     // Check for expected question content

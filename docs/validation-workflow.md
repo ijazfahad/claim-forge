@@ -304,8 +304,8 @@ flowchart TD
 - Specialty mapping database
 - Risk assessment algorithms
 
-### 3. Research Agent
-**Purpose**: Answer questions using web search and document extraction
+### 3. Research Agent (Multi-Model Parallel Architecture)
+**Purpose**: Answer questions using web search, document extraction, and parallel AI model consensus
 
 **Input**:
 - Questions from planner agent
@@ -314,20 +314,28 @@ flowchart TD
 
 **Process**:
 - Execute web searches using custom Google search engine
-- Make direct HTTP requests to Firecrawl for document extraction
-- Analyze documents for answers to specific questions
-- Provide confidence scores for each answer
+- **Firecrawl Data Extraction**: Extract structured data from payer policy documents
+- **Multi-Model Analysis**: Leverage pretrained medical knowledge for interpretation
+  - **Claude Agent**: Complex policy analysis and nuanced interpretation
+  - **GPT-5 Agent**: Clinical reasoning and medical coding expertise
+  - **DeepSeek Agent**: Fast, cost-effective routine checks
+- **Hybrid Validation**: Cross-reference extracted policy data with model expertise
+- **Consensus Engine**: Cross-validate interpretations across models
+- Provide confidence scores based on external data + model agreement
 - Identify source documents and citations
 
 **Output**:
 - Answers to questions with confidence scores
 - Source documents and citations
 - Search metadata and timestamps
+- Model consensus results
 
 **Tools Used**:
 - Custom Google Search API
-- Direct HTTP requests to Firecrawl API
-- OpenAI GPT-4o for document analysis
+- **Firecrawl API**: Structured data extraction from policy documents
+- **Parallel AI Models**: Claude, GPT-5, DeepSeek (pretrained medical knowledge)
+- **Hybrid Validation Engine**: Cross-reference external data with model expertise
+- **Consensus Engine**: Cross-validation and scoring
 
 ### 4. Retry Agent (Fallback)
 **Purpose**: Provide answers when web search fails or confidence is low
@@ -390,21 +398,48 @@ flowchart TD
    - Medical coding guidelines
    - High confidence, authoritative sources
 
-2. **Web Search Results** (Weight: 0.6-0.8)
+2. **Multi-Model Consensus** (Weight: 0.8-0.9)
+   - **High Consensus**: 2+ models agree (Weight: 0.9)
+   - **Medium Consensus**: 1 model with strong reasoning (Weight: 0.7)
+   - **Low Consensus**: Conflicting results (Weight: 0.5)
+
+3. **Web Search Results** (Weight: 0.6-0.8)
    - General medical information
    - Coding forums and discussions
    - Medium confidence, community sources
 
-3. **GPT Reasoning** (Weight: 0.3-0.5)
+4. **Single Model Reasoning** (Weight: 0.3-0.5)
    - AI-generated answers based on training data
    - Pattern recognition and inference
    - Lower confidence, fallback option
 
+### Model Specialization and Routing
+
+- **Claude Agent**: Complex policy analysis, legal language interpretation
+- **GPT-5 Agent**: Clinical reasoning, medical coding expertise
+- **DeepSeek Agent**: Fast, cost-effective routine checks
+- **Question Routing**: Route questions to appropriate models based on complexity and type
+
+### Hybrid Research Strategy
+
+**Firecrawl + Multi-Model Approach**:
+- **Firecrawl**: Extract current, payer-specific policy data from official documents
+- **Multi-Models**: Leverage pretrained medical knowledge for clinical interpretation
+- **Cross-Reference**: Validate extracted policy data against model expertise
+- **Consensus**: Combine external data with model reasoning for robust answers
+
+**Example Research Flow**:
+1. **Firecrawl**: "CPT 64636 requires prior authorization for Molina Healthcare"
+2. **Claude**: "This aligns with CMS guidelines for neurolytic procedures"
+3. **GPT-5**: "The documentation requirements include diagnostic blocks"
+4. **DeepSeek**: "Cost-effective alternative: consider 64635 if criteria not met"
+5. **Final Answer**: Combined external policy data + model expertise
+
 ### Confidence Scoring
 
-- **High (0.8-1.0)**: Direct answer from authoritative source
-- **Medium (0.5-0.7)**: Indirect answer or multiple supporting sources
-- **Low (0.2-0.4)**: Reasoning-based or conflicting sources
+- **High (0.8-1.0)**: Direct answer from authoritative source or multi-model consensus
+- **Medium (0.5-0.7)**: Indirect answer, multiple supporting sources, or single model with strong reasoning
+- **Low (0.2-0.4)**: Reasoning-based, conflicting sources, or low consensus
 
 ## Error Handling and Fallbacks
 
@@ -418,7 +453,13 @@ flowchart TD
 - Use web search results as fallback
 - Flag as lower confidence
 
-### 3. Agent Failures
+### 3. Multi-Model Consensus Failures
+- **Model Unavailability**: Fall back to available models
+- **Conflicting Results**: Use majority consensus or flag for manual review
+- **Timeout Issues**: Implement circuit breakers for slow models
+- **Cost Optimization**: Route to most cost-effective available model
+
+### 4. Agent Failures
 - Implement circuit breakers
 - Fall back to simpler validation
 - Log errors for monitoring
@@ -436,6 +477,11 @@ flowchart TD
 - Monitor answer confidence distributions
 - Log processing times per agent
 - Track fallback usage patterns
+- **Multi-Model Metrics**:
+  - Model consensus rates
+  - Individual model performance
+  - Cost per model per question type
+  - Consensus accuracy vs single model accuracy
 
 ## Implementation Notes
 
@@ -448,6 +494,10 @@ flowchart TD
 - Cache web search results (24 hours)
 - Cache Firecrawl extractions (7 days)
 - Cache agent responses (1 hour)
+- **Multi-Model Caching**:
+  - Cache consensus results (2 hours)
+  - Cache individual model responses (1 hour)
+  - Cache model performance metrics (24 hours)
 - Use Redis for high-performance caching
 
 ### Security and Compliance
@@ -462,16 +512,25 @@ flowchart TD
    - Train models on historical validation results
    - Improve answer weighting based on outcomes
    - Optimize search queries based on success rates
+   - **Multi-Model Learning**: Optimize model selection based on question type and historical performance
 
 2. **Real-Time Updates**
    - Stream policy updates to agents
    - Implement real-time learning from new denials
    - Update confidence models based on feedback
+   - **Dynamic Model Routing**: Adjust model selection based on real-time performance
 
 3. **Advanced Analytics**
    - Track denial patterns across payers
    - Identify emerging coding trends
    - Predict policy changes
+   - **Consensus Analytics**: Analyze model agreement patterns and optimize consensus thresholds
+
+4. **Multi-Model Architecture Enhancements**
+   - **Model Specialization**: Fine-tune models for specific question types
+   - **Consensus Optimization**: Implement weighted consensus based on model expertise
+   - **Cost-Performance Optimization**: Balance accuracy vs cost for different question types
+   - **Model Performance Tracking**: Real-time monitoring of individual model accuracy
 
 ## Agent Communication Flow
 
