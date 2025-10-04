@@ -14,6 +14,7 @@
     "test:google-search-agent": "ts-node src/test/test-runner.ts google-search-agent",
     "test:firecrawl-agent": "ts-node src/test/test-runner.ts firecrawl-agent",
     "test:research-agent": "ts-node src/test/test-runner.ts research-agent",
+    "test:evaluator-agent": "ts-node src/test/test-runner.ts evaluator-agent",
     "test:evaluate": "ts-node src/test/test-runner.ts evaluate",
     "test:integration": "ts-node src/test/test-runner.ts integration",
     "test:google": "ts-node src/test/test-runner.ts google",

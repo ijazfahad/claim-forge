@@ -1,6 +1,7 @@
 import { runSanityCheckTests } from './sanity-check-agent-test';
 import { runPlannerAgentTests } from './planner-agent-test';
 import ResearchAgentTestSuite from './research-agent-test';
+import EvaluatorAgentTestSuite from './evaluator-agent-test';
 import { runEvaluateAgentTests } from './evaluate-agent-test';
 import { runIntegrationTests } from './integration-test';
 import { runGoogleSearchTests } from './google-search-test';
@@ -35,6 +36,14 @@ const testSuites: TestSuite[] = [
     description: 'Tests cascading validation strategy with Firecrawl + Multi-Model escalation',
     run: async () => {
       const testSuite = new ResearchAgentTestSuite();
+      await testSuite.runTests();
+    }
+  },
+  {
+    name: 'Evaluator Agent',
+    description: 'Tests final claim evaluation and decision making with consolidated research data',
+    run: async () => {
+      const testSuite = new EvaluatorAgentTestSuite();
       await testSuite.runTests();
     }
   },
