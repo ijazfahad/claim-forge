@@ -304,8 +304,8 @@ flowchart TD
 - Specialty mapping database
 - Risk assessment algorithms
 
-### 3. Research Agent (Multi-Model Parallel Architecture)
-**Purpose**: Answer questions using web search, document extraction, and parallel AI model consensus
+### 3. Research Agent (Cascading Validation Strategy)
+**Purpose**: Answer questions using cost-optimized cascading approach - Firecrawl first, Multi-Model escalation only when needed
 
 **Input**:
 - Questions from planner agent
@@ -313,14 +313,15 @@ flowchart TD
 - Claim context
 
 **Process**:
-- Execute web searches using custom Google search engine
-- **Firecrawl Data Extraction**: Extract structured data from payer policy documents
-- **Multi-Model Analysis**: Leverage pretrained medical knowledge for interpretation
+- **Phase 1 - Firecrawl Primary**: Execute web searches and extract structured data from payer policy documents
+- **Confidence Assessment**: Evaluate Firecrawl extraction quality and confidence
+- **Phase 2 - Multi-Model Escalation** (only if Firecrawl confidence < threshold):
   - **Claude Agent**: Complex policy analysis and nuanced interpretation
-  - **GPT-5 Agent**: Clinical reasoning and medical coding expertise
+  - **GPT-5 Agent**: Clinical reasoning and medical coding expertise  
   - **DeepSeek Agent**: Fast, cost-effective routine checks
+  - **Consensus Engine**: Cross-validate interpretations across models
 - **Hybrid Validation**: Cross-reference extracted policy data with model expertise
-- **Consensus Engine**: Cross-validate interpretations across models
+- **Cost Optimization**: Avoid expensive multi-model calls when Firecrawl succeeds
 - Provide confidence scores based on external data + model agreement
 - Identify source documents and citations
 
@@ -328,14 +329,15 @@ flowchart TD
 - Answers to questions with confidence scores
 - Source documents and citations
 - Search metadata and timestamps
-- Model consensus results
+- Model consensus results (when escalated)
+- Cost tracking and optimization metrics
 
 **Tools Used**:
 - Custom Google Search API
-- **Firecrawl API**: Structured data extraction from policy documents
-- **Parallel AI Models**: Claude, GPT-5, DeepSeek (pretrained medical knowledge)
+- **Firecrawl API**: Primary structured data extraction (cost-effective)
+- **Parallel AI Models**: Claude, GPT-5, DeepSeek (escalation only)
+- **Confidence Threshold Logic**: Smart routing to avoid unnecessary costs
 - **Hybrid Validation Engine**: Cross-reference external data with model expertise
-- **Consensus Engine**: Cross-validation and scoring
 
 ### 4. Retry Agent (Fallback)
 **Purpose**: Provide answers when web search fails or confidence is low
@@ -420,6 +422,40 @@ flowchart TD
 - **DeepSeek Agent**: Fast, cost-effective routine checks
 - **Question Routing**: Route questions to appropriate models based on complexity and type
 
+### Cascading Validation Strategy
+
+**Cost-Optimized Research Flow**:
+1. **Phase 1 - Firecrawl Primary** (Cost-Effective Route)
+   - Execute Google Search + Firecrawl extraction
+   - Extract structured policy data from payer documents
+   - Assess extraction quality and confidence level
+   - **Success Criteria**: Clear, specific policy information found
+   - **Confidence Threshold**: ≥ 0.7 (70% confidence)
+
+2. **Phase 2 - Multi-Model Escalation** (Only When Needed)
+   - **Trigger**: Firecrawl confidence < 0.7 OR ambiguous/incomplete data
+   - **Parallel Processing**: Claude + GPT-5 + DeepSeek simultaneous analysis
+   - **Consensus Engine**: Cross-validate interpretations across models
+   - **Cost Tracking**: Monitor escalation frequency and savings
+
+**Confidence Assessment Logic**:
+- **High Confidence (0.8-1.0)**: Direct policy match, specific coverage rules, clear documentation
+- **Medium Confidence (0.5-0.7)**: Partial match, general guidelines, some ambiguity
+- **Low Confidence (0.0-0.4)**: No clear policy, conflicting information, insufficient data
+
+**Escalation Triggers**:
+- Firecrawl returns generic/unclear policy information
+- Multiple conflicting sources found
+- Complex clinical scenarios requiring interpretation
+- Payer-specific nuances not covered in standard policies
+- Time-sensitive or high-risk claims requiring expert analysis
+
+**Cost Optimization Metrics**:
+- **Firecrawl Success Rate**: Target 70-80% of questions answered without escalation
+- **Escalation Frequency**: Monitor multi-model usage patterns
+- **Cost Savings**: Track token usage vs. credit usage optimization
+- **Performance**: Response time comparison (Firecrawl vs. Multi-Model)
+
 ### Hybrid Research Strategy
 
 **Firecrawl + Multi-Model Approach**:
@@ -463,6 +499,111 @@ flowchart TD
 - Implement circuit breakers
 - Fall back to simpler validation
 - Log errors for monitoring
+
+## Research Agent Implementation Details
+
+### Service Architecture
+
+```typescript
+interface ResearchAgentService {
+  // Phase 1: Firecrawl Primary
+  async executeFirecrawlResearch(questions: ValidationQuestion[]): Promise<ResearchResult[]>
+  
+  // Phase 2: Multi-Model Escalation (conditional)
+  async executeMultiModelAnalysis(questions: ValidationQuestion[]): Promise<ConsensusResult[]>
+  
+  // Confidence Assessment
+  assessConfidenceLevel(extractedData: any): number
+  
+  // Cost Tracking
+  trackCostOptimization(phase: 'firecrawl' | 'multi-model', cost: number): void
+}
+```
+
+### Confidence Assessment Algorithm
+
+```typescript
+function assessConfidenceLevel(extractedData: FirecrawlResponse): number {
+  let confidence = 0.0;
+  
+  // Content Quality Indicators
+  if (extractedData.content?.length > 200) confidence += 0.2;
+  if (extractedData.structured_data?.policy_details) confidence += 0.3;
+  if (extractedData.metadata?.source_domain?.includes('cms.gov')) confidence += 0.2;
+  
+  // Specificity Indicators
+  if (extractedData.content?.includes('CPT')) confidence += 0.1;
+  if (extractedData.content?.includes('coverage')) confidence += 0.1;
+  if (extractedData.content?.includes('authorization')) confidence += 0.1;
+  
+  // Completeness Indicators
+  if (extractedData.structured_data?.coverage_rules?.length > 0) confidence += 0.2;
+  if (extractedData.structured_data?.eligibility_requirements?.length > 0) confidence += 0.1;
+  
+  return Math.min(confidence, 1.0);
+}
+```
+
+### Multi-Model Consensus Engine
+
+```typescript
+interface ConsensusResult {
+  question: string;
+  answers: {
+    claude: { answer: string; confidence: number; reasoning: string };
+    gpt5: { answer: string; confidence: number; reasoning: string };
+    deepseek: { answer: string; confidence: number; reasoning: string };
+  };
+  consensus: {
+    final_answer: string;
+    confidence: number;
+    agreement_level: 'high' | 'medium' | 'low';
+    conflicting_models: string[];
+  };
+  cost_tracking: {
+    tokens_used: number;
+    models_called: string[];
+    escalation_reason: string;
+  };
+}
+```
+
+### Escalation Decision Logic
+
+```typescript
+function shouldEscalateToMultiModel(firecrawlResult: ResearchResult): boolean {
+  const confidence = assessConfidenceLevel(firecrawlResult);
+  
+  // Escalate if confidence below threshold
+  if (confidence < 0.7) return true;
+  
+  // Escalate for high-risk claims regardless of confidence
+  if (firecrawlResult.question.includes('prior authorization')) return true;
+  if (firecrawlResult.question.includes('denial')) return true;
+  
+  // Escalate for complex clinical scenarios
+  if (firecrawlResult.question.includes('experimental')) return true;
+  if (firecrawlResult.question.includes('off-label')) return true;
+  
+  return false;
+}
+```
+
+### Cost Optimization Tracking
+
+```typescript
+interface CostMetrics {
+  firecrawl_success_rate: number;
+  escalation_frequency: number;
+  average_cost_per_question: number;
+  cost_savings_vs_full_multi_model: number;
+  performance_comparison: {
+    firecrawl_avg_time: number;
+    multi_model_avg_time: number;
+    time_savings: number;
+  };
+}
+```
 
 ## Performance Metrics
 
