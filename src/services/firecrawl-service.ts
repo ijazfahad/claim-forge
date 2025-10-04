@@ -132,6 +132,12 @@ export class FirecrawlService {
                     type: "string",
                     description: "Relevant policy or coverage information extracted from the page"
                   },
+                  confidence_score: {
+                    type: "number",
+                    minimum: 0,
+                    maximum: 1,
+                    description: "Confidence score (0-1) indicating how well the content answers the question"
+                  },
                   key_points: {
                     type: "array",
                     items: { type: "string" },
@@ -146,7 +152,7 @@ export class FirecrawlService {
                     }
                   }
                 },
-                required: ["extracted_content"]
+                required: ["extracted_content", "confidence_score"]
               }
             },
             {
@@ -175,6 +181,7 @@ export class FirecrawlService {
                   type: "object",
                   properties: {
                     extracted_content: { type: "string", description: "Relevant policy information" },
+                    confidence_score: { type: "number", minimum: 0, maximum: 1, description: "Confidence score (0-1) indicating how well the content answers the question" },
                     key_points: { type: "array", items: { type: "string" }, description: "Key points" },
                     policy_details: {
                       type: "object",
@@ -185,7 +192,7 @@ export class FirecrawlService {
                       }
                     }
                   },
-                  required: ["extracted_content"]
+                  required: ["extracted_content", "confidence_score"]
                   }
                 }]
               },

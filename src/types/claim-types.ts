@@ -79,6 +79,16 @@ export interface FirecrawlResponse {
   data?: {
     content: string;
     markdown: string;
+    structured_data?: {
+      extracted_content?: string;
+      confidence_score?: number;
+      key_points?: string[];
+      policy_details?: {
+        coverage_rules?: string[];
+        eligibility_requirements?: string[];
+        coding_guidelines?: string[];
+      };
+    };
     metadata: {
       title: string;
       description: string;
