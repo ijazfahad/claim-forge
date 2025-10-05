@@ -89,53 +89,66 @@ export class ResearchAgent {
    * Main research method implementing cascading validation strategy
    */
   async executeResearch(questions: ValidationQuestion[]): Promise<ResearchResult[]> {
-    console.log(`🔍 Research Agent: Processing ${questions.length} questions with cascading strategy`);
+    console.log(`🔍 Research Agent: Processing ${questions.length} questions with parallel strategy`);
     
     const results: ResearchResult[] = [];
     let firecrawlSuccessCount = 0;
-    let escalationCount = 0;
+    let multiModelSuccessCount = 0;
     const startTime = Date.now();
 
     for (const question of questions) {
       try {
-        // Phase 1: Try Firecrawl first (cost-effective)
-        const firecrawlResult = await this.executeFirecrawlResearch([question]);
+        // Always run Google search first to get URLs
+        console.log(`🚀 Running parallel research for: ${question.q.substring(0, 50)}...`);
         
-        if (firecrawlResult.length > 0 && firecrawlResult[0].confidence >= 0.7) {
-          // Firecrawl succeeded with high confidence
-          console.log(`✅ Firecrawl success for: ${question.q.substring(0, 50)}...`);
-          console.log(`📊 Firecrawl confidence: ${(firecrawlResult[0].confidence * 100).toFixed(1)}%`);
-          console.log(`📝 Firecrawl content preview: ${firecrawlResult[0].answer.substring(0, 200)}...`);
-          results.push(firecrawlResult[0]);
-          firecrawlSuccessCount++;
+        const searchResults = await this.googleSearch.executeSearches([question]);
+        const hasUrls = searchResults.firecrawl_inputs.length > 0;
+        
+        console.log(`   🔍 Google search results: ${searchResults.firecrawl_inputs.length} URLs found`);
+        
+        // Run all methods in parallel
+        const promises: Promise<any>[] = [
+          this.executeMultiModelAnalysis([question])
+        ];
+        
+        // Only add Firecrawl if we have URLs
+        if (hasUrls) {
+          promises.push(this.executeFirecrawlResearchWithUrls([question], searchResults.firecrawl_inputs[0]));
         } else {
-          // Phase 2: Escalate to multi-model analysis
-          console.log(`🔄 Escalating to multi-model for: ${question.q.substring(0, 50)}...`);
-          if (firecrawlResult.length > 0) {
-            console.log(`📊 Firecrawl confidence too low: ${(firecrawlResult[0].confidence * 100).toFixed(1)}% (threshold: 70%)`);
-            console.log(`📝 Firecrawl content preview: ${firecrawlResult[0].answer.substring(0, 200)}...`);
+          console.log(`   ⚠️  Skipping Firecrawl - no URLs found from Google search`);
+        }
+        
+        const results_array = await Promise.all(promises);
+        const multiModelResult = results_array[0];
+        const firecrawlResult = hasUrls ? results_array[1] : [];
+
+        // Compare results and select the best one
+        const bestResult = this.selectBestResult(firecrawlResult, multiModelResult, question);
+        
+        if (bestResult) {
+          results.push(bestResult);
+          if (bestResult.source === 'Firecrawl Extraction') {
+            firecrawlSuccessCount++;
+            console.log(`✅ Selected Firecrawl result for: ${question.q.substring(0, 50)}...`);
           } else {
-            console.log(`❌ Firecrawl failed - no results returned`);
+            multiModelSuccessCount++;
+            console.log(`✅ Selected Multi-Model result for: ${question.q.substring(0, 50)}...`);
           }
-          const multiModelResult = await this.executeMultiModelAnalysis([question]);
-          
-          if (multiModelResult.length > 0) {
-            const consensusResult = multiModelResult[0];
-            results.push({
-              question: question.q,
-              answer: consensusResult.consensus.final_answer,
-              confidence: consensusResult.consensus.confidence,
-              source: 'Multi-Model Consensus',
-              metadata: {
-                extraction_method: 'multi-model',
-                processing_time: Date.now() - startTime,
-                escalation_reason: 'Low Firecrawl confidence or complex scenario'
-              },
-              multi_model_data: consensusResult.multi_model_data,
-              recommendations: consensusResult.recommendations
-            });
-            escalationCount++;
-          }
+        } else {
+          // Fallback: create a basic result
+          console.log(`⚠️  No results available for: ${question.q.substring(0, 50)}...`);
+          results.push({
+            question: question.q,
+            answer: 'Unable to find relevant information for this question.',
+            confidence: 0.1,
+            source: 'No Results',
+            metadata: {
+              extraction_method: 'multi-model',
+              processing_time: Date.now() - startTime,
+              escalation_reason: 'No results from any method'
+            },
+            recommendations: ['❌ No results found - Manual review required', '📞 Contact payer directly for policy clarification']
+          });
         }
       } catch (error) {
         console.error(`❌ Research failed for question: ${question.q}`, error);
@@ -155,12 +168,73 @@ export class ResearchAgent {
       }
     }
 
-    console.log(`📊 Research complete: ${firecrawlSuccessCount} Firecrawl, ${escalationCount} Multi-Model`);
+    console.log(`📊 Research complete: ${firecrawlSuccessCount} Firecrawl, ${multiModelSuccessCount} Multi-Model`);
+    console.log(`📈 Success rate: ${((firecrawlSuccessCount + multiModelSuccessCount) / questions.length * 100).toFixed(1)}%`);
     return results;
   }
 
   /**
-   * Phase 1: Execute Firecrawl research (cost-effective)
+   * Execute Firecrawl research with pre-provided URLs
+   */
+  async executeFirecrawlResearchWithUrls(questions: ValidationQuestion[], firecrawlInput: any): Promise<ResearchResult[]> {
+    const results: ResearchResult[] = [];
+    const startTime = Date.now();
+
+    for (const question of questions) {
+      try {
+        console.log(`   🔍 Firecrawl processing ${firecrawlInput.urls.length} URLs...`);
+        
+        // Extract content using Firecrawl
+        const firecrawlResponse = await this.firecrawl.extractContentForQuestion(
+          firecrawlInput.question,
+          firecrawlInput.question_type,
+          firecrawlInput.urls,
+          firecrawlInput.query
+        );
+
+        if (firecrawlResponse.success && firecrawlResponse.data) {
+          // Calculate confidence based on content quality and relevance
+          const confidence = this.calculateContentConfidence(firecrawlResponse.data, question);
+          
+          // Log Firecrawl extraction details
+          console.log(`   🔍 Firecrawl extraction details:`);
+          console.log(`      📊 Confidence score: ${confidence.toFixed(3)}`);
+          console.log(`      📝 Content length: ${firecrawlResponse.data.content.length} chars`);
+          console.log(`      🔗 URLs processed: ${firecrawlInput.urls.length}`);
+          if (firecrawlResponse.data.structured_data) {
+            console.log(`      🏗️  Structured data available: ${!!firecrawlResponse.data.structured_data}`);
+            console.log(`      🔑 Key points: ${firecrawlResponse.data.structured_data.key_points?.length || 0} items`);
+            console.log(`      📋 Policy details: ${!!firecrawlResponse.data.structured_data.policy_details}`);
+          }
+          
+          // Generate recommendations based on Firecrawl results
+          const recommendations = this.generateRecommendations(question, firecrawlResponse.data, confidence, 'firecrawl');
+          
+          results.push({
+            question: question.q,
+            answer: firecrawlResponse.data.content,
+            confidence,
+            source: 'Firecrawl Extraction',
+            metadata: {
+              extraction_method: 'firecrawl',
+              processing_time: Date.now() - startTime,
+              escalation_reason: 'Firecrawl extraction successful'
+            },
+            recommendations
+          });
+        } else {
+          console.log(`   ❌ Firecrawl extraction failed: ${firecrawlResponse.error}`);
+        }
+      } catch (error) {
+        console.error(`   ❌ Firecrawl research failed for question: ${question.q}`, error);
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Phase 1: Execute Firecrawl research (cost-effective) - Legacy method
    */
   async executeFirecrawlResearch(questions: ValidationQuestion[]): Promise<ResearchResult[]> {
     const results: ResearchResult[] = [];
@@ -183,9 +257,8 @@ export class ResearchAgent {
           );
 
           if (firecrawlResponse.success && firecrawlResponse.data) {
-            // Use Firecrawl-provided confidence score if available, otherwise fallback to assessment
-            const confidence = firecrawlResponse.data.structured_data?.confidence_score ?? 
-                              this.assessConfidenceLevel(firecrawlResponse.data);
+            // Calculate confidence based on content quality and relevance
+            const confidence = this.calculateContentConfidence(firecrawlResponse.data, question);
             
             // Log Firecrawl extraction details
             console.log(`🔍 Firecrawl extraction details:`);
@@ -356,6 +429,148 @@ export class ResearchAgent {
     }
     
     return recommendations;
+  }
+
+  /**
+   * Select the best result between Firecrawl and Multi-Model analysis
+   */
+  selectBestResult(firecrawlResult: ResearchResult[], multiModelResult: any[], question: ValidationQuestion): ResearchResult | null {
+    const firecrawl = firecrawlResult.length > 0 ? firecrawlResult[0] : null;
+    const multiModel = multiModelResult.length > 0 ? multiModelResult[0] : null;
+
+    // If only one result is available, use it
+    if (firecrawl && !multiModel) {
+      console.log(`   🔍 Only Firecrawl result available (confidence: ${(firecrawl.confidence * 100).toFixed(1)}%)`);
+      return firecrawl;
+    }
+    if (!firecrawl && multiModel) {
+      console.log(`   🧠 Only Multi-Model result available (confidence: ${(multiModel.consensus.confidence * 100).toFixed(1)}%)`);
+      return {
+        question: question.q,
+        answer: multiModel.consensus.final_answer,
+        confidence: multiModel.consensus.confidence,
+        source: 'Multi-Model Consensus',
+        metadata: {
+          extraction_method: 'multi-model',
+          processing_time: 0,
+          escalation_reason: 'Only multi-model available'
+        },
+        multi_model_data: multiModel.multi_model_data,
+        recommendations: multiModel.recommendations
+      };
+    }
+
+    // If neither result is available
+    if (!firecrawl && !multiModel) {
+      console.log(`   ❌ No results from either method`);
+      return null;
+    }
+
+    // Compare both results
+    console.log(`   🔍 Comparing results:`);
+    console.log(`      Firecrawl: ${(firecrawl!.confidence * 100).toFixed(1)}% confidence, ${firecrawl!.answer.length} chars`);
+    console.log(`      Multi-Model: ${(multiModel!.consensus.confidence * 100).toFixed(1)}% confidence, ${multiModel!.consensus.final_answer.length} chars`);
+
+    // Selection criteria (can be adjusted based on needs)
+    const firecrawlScore = this.calculateResultScore(firecrawl!, question);
+    const multiModelScore = this.calculateResultScore({
+      question: question.q,
+      answer: multiModel!.consensus.final_answer,
+      confidence: multiModel!.consensus.confidence,
+      source: 'Multi-Model',
+      metadata: {
+        extraction_method: 'multi-model',
+        processing_time: 0
+      },
+      recommendations: []
+    }, question);
+
+    console.log(`   📊 Result scores: Firecrawl=${firecrawlScore.toFixed(2)}, Multi-Model=${multiModelScore.toFixed(2)}`);
+
+    if (firecrawlScore >= multiModelScore) {
+      console.log(`   ✅ Selected Firecrawl (score: ${firecrawlScore.toFixed(2)})`);
+      return firecrawl!;
+    } else {
+      console.log(`   ✅ Selected Multi-Model (score: ${multiModelScore.toFixed(2)})`);
+      return {
+        question: question.q,
+        answer: multiModel!.consensus.final_answer,
+        confidence: multiModel!.consensus.confidence,
+        source: 'Multi-Model Consensus',
+        metadata: {
+          extraction_method: 'multi-model',
+          processing_time: 0,
+          escalation_reason: 'Multi-model scored higher'
+        },
+        multi_model_data: multiModel!.multi_model_data,
+        recommendations: multiModel!.recommendations
+      };
+    }
+  }
+
+  /**
+   * Calculate a score for a research result based on multiple factors
+   */
+  calculateResultScore(result: ResearchResult, question: ValidationQuestion): number {
+    let score = 0;
+
+    // Base confidence score (0-1)
+    score += result.confidence * 0.4;
+
+    // Content length bonus (0-0.2)
+    const contentLength = result.answer.length;
+    if (contentLength > 100) score += 0.1;
+    if (contentLength > 300) score += 0.1;
+
+    // Relevance to question (0-0.2)
+    const questionKeywords = question.q.toLowerCase().split(' ');
+    const answerText = result.answer.toLowerCase();
+    const keywordMatches = questionKeywords.filter(keyword => 
+      keyword.length > 3 && answerText.includes(keyword)
+    ).length;
+    score += Math.min(keywordMatches * 0.05, 0.2);
+
+    // Source quality bonus (0-0.1)
+    if (result.source === 'Firecrawl Extraction') score += 0.05;
+    if (result.source === 'Multi-Model Consensus') score += 0.1;
+
+    // Structured data bonus (0-0.1)
+    if (result.metadata?.extraction_method === 'firecrawl' && (result.metadata as any)?.structured_data) {
+      score += 0.1;
+    }
+
+    return Math.min(score, 1.0);
+  }
+
+  /**
+   * Calculate confidence based on content quality and relevance to the question
+   */
+  calculateContentConfidence(firecrawlData: any, question: ValidationQuestion): number {
+    let confidence = 0.0;
+    const content = firecrawlData.content || '';
+    const questionText = question.q.toLowerCase();
+    
+    // Base confidence for having content
+    if (content.length > 50) confidence += 0.2;
+    if (content.length > 200) confidence += 0.2;
+    if (content.length > 500) confidence += 0.1;
+    
+    // Relevance to question
+    if (questionText.includes('cpt') && content.toLowerCase().includes('cpt')) confidence += 0.2;
+    if (questionText.includes('coverage') && content.toLowerCase().includes('coverage')) confidence += 0.1;
+    if (questionText.includes('policy') && content.toLowerCase().includes('policy')) confidence += 0.1;
+    if (questionText.includes('medicare') && content.toLowerCase().includes('medicare')) confidence += 0.1;
+    
+    // Source quality indicators
+    if (firecrawlData.metadata?.url?.includes('cms.gov')) confidence += 0.2;
+    if (firecrawlData.metadata?.url?.includes('medicare.gov')) confidence += 0.1;
+    if (firecrawlData.metadata?.url?.includes('hhs.gov')) confidence += 0.1;
+    
+    // Structured data bonus
+    if (firecrawlData.structured_data?.key_points?.length > 0) confidence += 0.1;
+    if (firecrawlData.structured_data?.policy_details) confidence += 0.1;
+    
+    return Math.min(confidence, 1.0);
   }
 
   /**

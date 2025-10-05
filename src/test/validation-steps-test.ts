@@ -284,7 +284,7 @@ class ValidationStepsTest {
 
     try {
       const researchAgent = new ResearchAgent();
-      await researchAgent.initialize();
+      // await researchAgent.initialize(); // Method doesn't exist
 
       const questions = [
         {
@@ -307,19 +307,19 @@ class ValidationStepsTest {
         }
       ];
 
-      const result = await researchAgent.researchQuestions(questions, claim);
+      const result = await researchAgent.executeResearch(questions);
       const duration = Date.now() - startTime;
 
       console.log('   ✅ Research Agent Results:');
       console.log(`   - Questions Researched: ${result.length}`);
       console.log(`   - Duration: ${duration}ms`);
 
-      result.forEach((research, index) => {
+      result.forEach((research: any, index: number) => {
         console.log(`   📊 Research ${index + 1}:`);
-        console.log(`     - Question: ${research.q}`);
-        console.log(`     - Summary: ${research.summary.substring(0, 100)}...`);
-        console.log(`     - Status: ${research.status}`);
+        console.log(`     - Question: ${research.question}`);
+        console.log(`     - Answer: ${research.answer.substring(0, 100)}...`);
         console.log(`     - Confidence: ${research.confidence}`);
+        console.log(`     - Source: ${research.source}`);
       });
 
       this.testResults.push({

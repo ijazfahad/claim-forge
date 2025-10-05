@@ -1,0 +1,80 @@
+# True multi-stage Dockerfile - dependencies cached separately from code
+# Stage 1: Dependencies ONLY (cached until package.json changes)
+FROM node:20-alpine AS dependencies
+
+# Install ONLY curl for health checks
+RUN apk add --no-cache curl
+
+# Set working directory
+WORKDIR /app
+
+# Copy ONLY package files for dependency installation
+COPY package*.json ./
+
+# Install dependencies (this layer is cached until package.json changes)
+RUN npm ci --silent
+
+# Stage 2: Build ONLY (cached until source code changes)
+FROM node:20-alpine AS builder
+
+# Install ONLY curl for health checks
+RUN apk add --no-cache curl
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Copy dependencies from dependencies stage (no npm install needed!)
+COPY --from=dependencies /app/node_modules ./node_modules
+
+# Copy ONLY source code (this layer is cached until source changes)
+COPY src/ ./src/
+COPY tsconfig.json ./
+
+# Build TypeScript (this layer is cached until source changes)
+RUN npm run build
+
+# Stage 3: Production (minimal runtime - only copies built files)
+FROM node:20-alpine AS production
+
+# Install ONLY runtime dependencies
+RUN apk add --no-cache curl
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Copy dependencies from dependencies stage
+COPY --from=dependencies /app/node_modules ./node_modules
+
+# Copy built application from builder stage
+COPY --from=builder /app/dist ./dist
+
+# Copy static files
+COPY public/ ./public/
+COPY .env* ./
+
+# Clean up dev dependencies
+RUN npm prune --production --silent && \
+    npm cache clean --force
+
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001 && \
+    chown -R nodejs:nodejs /app
+
+USER nodejs
+
+# Expose port
+EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:3000/health || exit 1
+
+# Start the application
+CMD ["npm", "start"]

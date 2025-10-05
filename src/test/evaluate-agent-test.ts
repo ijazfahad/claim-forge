@@ -26,28 +26,26 @@ const testCases: TestCase[] = [
     claimId: 'CLM-001',
     researchResults: [
       {
-        n: '1',
-        type: 'basic',
-        q: 'What are the documentation requirements for CPT code 99213?',
-        status: 'ok',
-        model_only: 'true',
-        summary: 'CPT 99213 requires a problem-focused history, problem-focused examination, and straightforward medical decision making. Documentation must support the level of service billed.',
-        likely_accept_if: 'Documentation requirements found',
-        confidence: 'high',
-        disclaimers: 'Based on CMS guidelines',
-        next_checks: ['Verify documentation completeness']
+        question: 'What are the documentation requirements for CPT code 99213?',
+        answer: 'CPT 99213 requires a problem-focused history, problem-focused examination, and straightforward medical decision making. Documentation must support the level of service billed.',
+        confidence: 0.9,
+        source: 'CMS Guidelines',
+        metadata: {
+          extraction_method: 'firecrawl',
+          processing_time: 1500
+        },
+        recommendations: ['Verify documentation completeness']
       },
       {
-        n: '2',
-        type: 'basic',
-        q: 'What is the appropriate use of modifier 25?',
-        status: 'ok',
-        model_only: 'true',
-        summary: 'Modifier 25 is used to indicate that a significant, separately identifiable evaluation and management service was performed on the same day as a procedure.',
-        likely_accept_if: 'Modifier 25 guidelines found',
-        confidence: 'high',
-        disclaimers: 'Based on AMA CPT guidelines',
-        next_checks: ['Verify separate E&M documentation']
+        question: 'What is the appropriate use of modifier 25?',
+        answer: 'Modifier 25 is used to indicate that a significant, separately identifiable evaluation and management service was performed on the same day as a procedure.',
+        confidence: 0.9,
+        source: 'CMS Guidelines',
+        metadata: {
+          extraction_method: 'firecrawl',
+          processing_time: 1500
+        },
+        recommendations: ['Verify separate E&M documentation']
       }
     ],
     startTime: Date.now() - 5000,
@@ -63,28 +61,26 @@ const testCases: TestCase[] = [
     claimId: 'CLM-002',
     researchResults: [
       {
-        n: '1',
-        type: 'specialty',
-        q: 'Are there any LCD requirements for CPT 99215 with diabetes?',
-        status: 'insufficient',
-        model_only: 'true',
-        summary: 'Local Coverage Determinations vary by region. Specific requirements need to be checked with the local Medicare Administrative Contractor.',
-        likely_accept_if: 'LCD requirements confirmed',
-        confidence: 'low',
-        disclaimers: 'Regional variations apply',
-        next_checks: ['Contact local MAC', 'Verify regional requirements']
+        question: 'Are there any LCD requirements for CPT 99215 with diabetes?',
+        answer: 'Local Coverage Determinations vary by region. Specific requirements need to be checked with the local Medicare Administrative Contractor.',
+        confidence: 0.3,
+        source: 'CMS Guidelines',
+        metadata: {
+          extraction_method: 'multi-model',
+          processing_time: 1500
+        },
+        recommendations: ['Contact local MAC', 'Verify regional requirements']
       },
       {
-        n: '2',
-        type: 'specialty',
-        q: 'What are the medical necessity requirements for blood glucose monitoring?',
-        status: 'ok',
-        model_only: 'true',
-        summary: 'Blood glucose monitoring is medically necessary for patients with diabetes. Documentation must show the medical necessity for the frequency of testing.',
-        likely_accept_if: 'Medical necessity criteria met',
-        confidence: 'high',
-        disclaimers: 'Based on Medicare coverage guidelines',
-        next_checks: ['Verify documentation supports frequency']
+        question: 'What are the medical necessity requirements for blood glucose monitoring?',
+        answer: 'Blood glucose monitoring is medically necessary for patients with diabetes. Documentation must show the medical necessity for the frequency of testing.',
+        confidence: 0.9,
+        source: 'CMS Guidelines',
+        metadata: {
+          extraction_method: 'firecrawl',
+          processing_time: 1500
+        },
+        recommendations: ['Verify documentation supports frequency']
       }
     ],
     startTime: Date.now() - 8000,
@@ -101,28 +97,26 @@ const testCases: TestCase[] = [
     claimId: 'CLM-003',
     researchResults: [
       {
-        n: '1',
-        type: 'basic',
-        q: 'Are there any NCCI edits that prevent billing CPT 99213 with 36415?',
-        status: 'ok',
-        model_only: 'true',
-        summary: 'NCCI edits show that CPT 99213 and 36415 cannot be billed together without appropriate modifiers. Modifier 25 may be required.',
-        likely_accept_if: 'NCCI edit information found',
-        confidence: 'high',
-        disclaimers: 'Based on CMS NCCI edits',
-        next_checks: ['Verify modifier 25 documentation']
+        question: 'Are there any NCCI edits that prevent billing CPT 99213 with 36415?',
+        answer: 'NCCI edits show that CPT 99213 and 36415 cannot be billed together without appropriate modifiers. Modifier 25 may be required.',
+        confidence: 0.9,
+        source: 'CMS Guidelines',
+        metadata: {
+          extraction_method: 'firecrawl',
+          processing_time: 1500
+        },
+        recommendations: ['Verify modifier 25 documentation']
       },
       {
-        n: '2',
-        type: 'basic',
-        q: 'What documentation is required for modifier 25?',
-        status: 'ok',
-        model_only: 'true',
-        summary: 'Modifier 25 requires documentation showing a significant, separately identifiable E&M service was performed on the same day as a procedure.',
-        likely_accept_if: 'Documentation requirements found',
-        confidence: 'high',
-        disclaimers: 'Based on AMA CPT guidelines',
-        next_checks: ['Verify separate E&M documentation']
+        question: 'What documentation is required for modifier 25?',
+        answer: 'Modifier 25 requires documentation showing a significant, separately identifiable E&M service was performed on the same day as a procedure.',
+        confidence: 0.9,
+        source: 'CMS Guidelines',
+        metadata: {
+          extraction_method: 'firecrawl',
+          processing_time: 1500
+        },
+        recommendations: ['Verify separate E&M documentation']
       }
     ],
     startTime: Date.now() - 6000,
@@ -139,28 +133,26 @@ const testCases: TestCase[] = [
     claimId: 'CLM-004',
     researchResults: [
       {
-        n: '1',
-        type: 'subspecialty',
-        q: 'What are the ED-specific coding guidelines for level 4 visits?',
-        status: 'ok',
-        model_only: 'true',
-        summary: 'ED level 4 visits require comprehensive history, comprehensive examination, and high complexity medical decision making. Documentation must support all three key components.',
-        likely_accept_if: 'ED coding guidelines found',
-        confidence: 'high',
-        disclaimers: 'Based on ACEP coding guidelines',
-        next_checks: ['Verify all three key components documented']
+        question: 'What are the ED-specific coding guidelines for level 4 visits?',
+        answer: 'ED level 4 visits require comprehensive history, comprehensive examination, and high complexity medical decision making. Documentation must support all three key components.',
+        confidence: 0.9,
+        source: 'CMS Guidelines',
+        metadata: {
+          extraction_method: 'firecrawl',
+          processing_time: 1500
+        },
+        recommendations: ['Verify all three key components documented']
       },
       {
-        n: '2',
-        type: 'subspecialty',
-        q: 'Are there any state-specific requirements for ED documentation?',
-        status: 'insufficient',
-        model_only: 'true',
-        summary: 'State requirements vary. Some states require specific documentation for emergency services, including time-based documentation.',
-        likely_accept_if: 'State requirements confirmed',
-        confidence: 'low',
-        disclaimers: 'State variations apply',
-        next_checks: ['Contact state medical board', 'Verify state-specific requirements']
+        question: 'Are there any state-specific requirements for ED documentation?',
+        answer: 'State requirements vary. Some states require specific documentation for emergency services, including time-based documentation.',
+        confidence: 0.3,
+        source: 'CMS Guidelines',
+        metadata: {
+          extraction_method: 'multi-model',
+          processing_time: 1500
+        },
+        recommendations: ['Contact state medical board', 'Verify state-specific requirements']
       }
     ],
     startTime: Date.now() - 7000,

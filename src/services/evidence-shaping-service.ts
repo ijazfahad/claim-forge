@@ -44,13 +44,13 @@ export class EvidenceShapingService {
     const shaped: ShapedEvidence[] = [];
 
     for (const result of researchResults) {
-      const question = questions.find(q => String(q.n) === result.n);
+      const question = questions.find(q => q.q === result.question);
       if (!question) continue;
 
       const shapedItem: ShapedEvidence = {
-        n: Number(result.n),
-        type: result.type,
-        q: result.q,
+        n: question.n,
+        type: question.type,
+        q: question.q,
         mode: this.determineMode(result),
         accept_if: question.accept_if || [],
         claim_context: {
@@ -71,16 +71,16 @@ export class EvidenceShapingService {
       };
 
       // Handle different modes
-      if (result.model_only === 'true') {
+      if (result.metadata.extraction_method === 'multi-model') {
         shapedItem.mode = 'model_only';
         shapedItem.model_only = {
-          summary: result.summary,
-          likely_accept_if: result.likely_accept_if || null,
+          summary: result.answer,
+          likely_accept_if: result.recommendations.length > 0 ? result.recommendations[0] : null,
           confidence: this.sanitizeConfidence(result.confidence),
-          next_checks: result.next_checks || [],
-          disclaimers: result.disclaimers || 'Plan, state, and line-of-business rules vary; verify in official policy.'
+          next_checks: result.recommendations,
+          disclaimers: 'Plan, state, and line-of-business rules vary; verify in official policy.'
         };
-      } else if (result.status === 'ok') {
+      } else if (result.confidence > 0.7) {
         shapedItem.mode = 'researched';
         // In a real implementation, this would include actual evidence from web search/Firecrawl
         shapedItem.evidence = {
@@ -103,15 +103,15 @@ export class EvidenceShapingService {
    * Determine the mode based on research result
    */
   private determineMode(result: ResearchResult): 'model_only' | 'researched' | 'insufficient' | 'unknown' {
-    if (result.model_only === 'true') {
+    if (result.metadata.extraction_method === 'multi-model') {
       return 'model_only';
     }
     
-    if (result.status === 'ok') {
+    if (result.confidence > 0.7) {
       return 'researched';
     }
     
-    if (result.status === 'insufficient') {
+    if (result.confidence < 0.5) {
       return 'insufficient';
     }
     
@@ -121,10 +121,9 @@ export class EvidenceShapingService {
   /**
    * Sanitize confidence level
    */
-  private sanitizeConfidence(confidence: string): 'low' | 'medium' | 'high' {
-    const normalized = confidence.toLowerCase();
-    if (normalized === 'high') return 'high';
-    if (normalized === 'medium') return 'medium';
+  private sanitizeConfidence(confidence: number): 'low' | 'medium' | 'high' {
+    if (confidence >= 0.8) return 'high';
+    if (confidence >= 0.6) return 'medium';
     return 'low';
   }
 

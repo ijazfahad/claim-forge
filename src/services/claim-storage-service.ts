@@ -63,6 +63,54 @@ export class ClaimStorageService {
   }
 
   /**
+   * Store just the claim payload (initial storage)
+   */
+  async storeClaimPayload(claimId: string, payload: ClaimPayload): Promise<string> {
+    const client = await this.pool.connect();
+    
+    try {
+      await client.query('BEGIN');
+
+      // Insert initial claim validation record with minimal data
+      const claimValidationQuery = `
+        INSERT INTO claim_forge.claim_validations (
+          claim_id, original_claim, overall_status, confidence, processing_time_ms,
+          question_analysis, overall_assessment, insurance_insights,
+          research_results, planner_questions, sanity_check_results
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        RETURNING id
+      `;
+
+      const claimValidationResult = await client.query(claimValidationQuery, [
+        claimId,
+        JSON.stringify(payload),
+        'REQUIRES_REVIEW', // Initial status
+        'low', // Initial confidence
+        0, // Initial processing time
+        JSON.stringify([]), // Empty question analysis
+        JSON.stringify({}), // Empty overall assessment
+        JSON.stringify({}), // Empty insurance insights
+        JSON.stringify([]), // Empty research results
+        JSON.stringify([]), // Empty planner questions
+        JSON.stringify({}) // Empty sanity check results
+      ]);
+
+      const claimValidationId = claimValidationResult.rows[0].id;
+      
+      await client.query('COMMIT');
+      console.log(`✅ Claim payload stored with validation ID: ${claimValidationId}`);
+      return claimValidationId;
+
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('❌ Failed to store claim payload:', error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
    * Store a complete claim validation record
    */
   async storeClaimValidation(
@@ -170,6 +218,77 @@ export class ClaimStorageService {
 
     } catch (error) {
       console.error('Error storing validation step:', error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Update a claim validation record
+   */
+  async updateClaimValidation(claimValidationId: string, updates: {
+    overall_status?: string;
+    confidence?: string;
+    processing_time_ms?: number;
+    overall_assessment?: any;
+    insurance_insights?: any;
+  }): Promise<void> {
+    const client = await this.pool.connect();
+    
+    try {
+      const updateFields = [];
+      const values = [];
+      let paramIndex = 1;
+
+      if (updates.overall_status !== undefined) {
+        updateFields.push(`overall_status = $${paramIndex}`);
+        values.push(updates.overall_status);
+        paramIndex++;
+      }
+
+      if (updates.confidence !== undefined) {
+        updateFields.push(`confidence = $${paramIndex}`);
+        values.push(updates.confidence);
+        paramIndex++;
+      }
+
+      if (updates.processing_time_ms !== undefined) {
+        updateFields.push(`processing_time_ms = $${paramIndex}`);
+        values.push(updates.processing_time_ms);
+        paramIndex++;
+      }
+
+      if (updates.overall_assessment !== undefined) {
+        updateFields.push(`overall_assessment = $${paramIndex}`);
+        values.push(JSON.stringify(updates.overall_assessment));
+        paramIndex++;
+      }
+
+      if (updates.insurance_insights !== undefined) {
+        updateFields.push(`insurance_insights = $${paramIndex}`);
+        values.push(JSON.stringify(updates.insurance_insights));
+        paramIndex++;
+      }
+
+      if (updateFields.length === 0) {
+        console.log('No fields to update');
+        return;
+      }
+
+      values.push(claimValidationId); // Add ID as last parameter
+
+      const query = `
+        UPDATE claim_forge.claim_validations 
+        SET ${updateFields.join(', ')}, updated_at = NOW()
+        WHERE id = $${paramIndex}
+      `;
+
+      await client.query(query, values);
+      console.log(`✅ Claim validation ${claimValidationId} updated successfully`);
+
+    } catch (error) {
+      console.error('Error updating claim validation:', error);
       throw error;
     } finally {
       client.release();

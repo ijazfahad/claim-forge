@@ -7,9 +7,9 @@ const DATABASE_URL = 'postgresql://postgres:postgres@45.79.108.146:5432/claim_fo
 
 const pool = new Pool({
   connectionString: DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false
-  },
+  ssl: DATABASE_URL?.includes('localhost') || DATABASE_URL?.includes('127.0.0.1') 
+    ? false 
+    : { rejectUnauthorized: false },
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000,

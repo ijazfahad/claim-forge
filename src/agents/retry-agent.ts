@@ -89,7 +89,7 @@ OUTPUT FORMAT:
     for (const failedQuestion of failedQuestions) {
       try {
         // Check cache first
-        const cacheKey = `retry:${failedQuestion.n}:${failedQuestion.q.substring(0, 50)}`;
+        const cacheKey = `retry:${failedQuestion.question.substring(0, 50)}`;
         const cached = await this.redis.redis.get(cacheKey);
         if (cached) {
           results.push(JSON.parse(cached));
@@ -99,10 +99,10 @@ OUTPUT FORMAT:
         const input = `
 Provide a reasoning-based answer for this validation question:
 
-Question: ${failedQuestion.q}
-Previous Summary: ${failedQuestion.summary}
+Question: ${failedQuestion.question}
+Previous Answer: ${failedQuestion.answer}
 Previous Confidence: ${failedQuestion.confidence}
-Previous Status: ${failedQuestion.status}
+Previous Source: ${failedQuestion.source}
 
 Claim Context:
 - Payer: ${claimContext.payer}
@@ -117,9 +117,9 @@ Use your domain knowledge and reasoning to provide the best possible answer. Be 
         
         // Parse and structure the result
         const retryResult: RetryResult = {
-          n: failedQuestion.n,
-          type: failedQuestion.type,
-          q: failedQuestion.q,
+          n: failedQuestion.question.substring(0, 10), // Use first 10 chars as ID
+          type: 'basic', // Default type
+          q: failedQuestion.question,
           status: result.status || 'insufficient',
           model_only: 'true',
           summary: result.summary || 'Unable to determine',
@@ -134,13 +134,13 @@ Use your domain knowledge and reasoning to provide the best possible answer. Be 
         
         results.push(retryResult);
       } catch (error) {
-        console.error(`Retry error for question ${failedQuestion.n}:`, error);
+        console.error(`Retry error for question ${failedQuestion.question}:`, error);
         
         // Add error result
         results.push({
-          n: failedQuestion.n,
-          type: failedQuestion.type,
-          q: failedQuestion.q,
+          n: failedQuestion.question.substring(0, 10),
+          type: 'basic',
+          q: failedQuestion.question,
           status: 'insufficient',
           model_only: 'true',
           summary: 'Retry failed',
@@ -161,10 +161,10 @@ Use your domain knowledge and reasoning to provide the best possible answer. Be 
   shouldRetry(researchResult: ResearchResult): boolean {
     // Retry if confidence is low or answer is insufficient
     return (
-      researchResult.confidence === 'low' ||
-      researchResult.summary.includes('No clear answer') ||
-      researchResult.summary.includes('Research failed') ||
-      researchResult.next_checks.length === 0
+      researchResult.confidence < 0.5 ||
+      researchResult.answer.includes('No clear answer') ||
+      researchResult.answer.includes('Research failed') ||
+      researchResult.recommendations.length === 0
     );
   }
 

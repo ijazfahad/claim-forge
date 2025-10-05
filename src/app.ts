@@ -6,6 +6,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import claimsRouter from './routes/claims';
 import testRouter from './routes/test';
+import claimValidationApiRouter from './routes/claim-validation-api';
 
 // Load environment variables
 dotenv.config();
@@ -13,8 +14,22 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Security middleware
-app.use(helmet());
+// Security middleware with CSP configuration for inline scripts
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'"],
+      frameSrc: ["'none'"],
+    },
+  },
+}));
 
 // CORS configuration
 app.use(cors({
@@ -46,6 +61,7 @@ app.get('/health', (req, res) => {
 // API routes
 app.use('/api/claims', claimsRouter);
 app.use('/api/test', testRouter);
+app.use('/api', claimValidationApiRouter);
 
 // Serve workflow UI at root
 app.get('/', (req, res) => {

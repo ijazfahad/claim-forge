@@ -24,6 +24,8 @@
     "test:services": "ts-node src/test/services-test.ts",
     "test:cms": "ts-node src/test/cms-ncci-test.ts",
     "test:cms:comprehensive": "ts-node src/test/comprehensive-cms-test.ts",
+    "test:web-interface": "ts-node src/test/web-interface-test.ts",
+    "test:comprehensive-workflow": "ts-node src/test/comprehensive-workflow.test.ts",
     "docker:build": "docker build -t claim-validator .",
     "docker:run": "docker run -p 3000:3000 --env-file .env claim-validator",
     "docker:dev": "docker-compose -f docker-compose.dev.yml up --build",
@@ -39,7 +41,6 @@
     "@openai/agents": "^0.1.6",
     "@types/pg": "^8.15.5",
     "axios": "^1.12.2",
-    "better-sqlite3": "^12.4.1",
     "cheerio": "^1.1.2",
     "cors": "^2.8.5",
     "dotenv": "^16.3.0",
@@ -55,7 +56,6 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
     "@types/jest": "^29.5.0",

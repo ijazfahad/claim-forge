@@ -1,12 +1,16 @@
 import { Pool } from 'pg';
+import dotenv from 'dotenv';
 
-const DATABASE_URL = 'postgresql://postgres:postgres@45.79.108.146:5432/claim_forge';
+// Load environment variables
+dotenv.config();
+
+const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://claimvalidator:claimvalidator123@localhost:5432/claim_validator';
 
 const pool = new Pool({
   connectionString: DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false
-  },
+  ssl: DATABASE_URL?.includes('localhost') || DATABASE_URL?.includes('127.0.0.1') 
+    ? false 
+    : { rejectUnauthorized: false },
   max: 5,
   idleTimeoutMillis: 10000,
   connectionTimeoutMillis: 5000,

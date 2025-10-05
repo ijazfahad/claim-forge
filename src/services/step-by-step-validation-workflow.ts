@@ -24,7 +24,7 @@ export interface ValidationStepResult {
   escalation_reason?: string;
 }
 
-export class ValidationWorkflow {
+export class StepByStepValidationWorkflow {
   private sanityCheckAgent: SanityCheckAgent;
   private plannerAgent: PlannerAgent;
   private researchAgent: ResearchAgent;
@@ -77,6 +77,7 @@ export class ValidationWorkflow {
       // Step 2: Planner Agent
       const plannerStepResult = await this.executePlannerStep(
         claimValidationId,
+        payload,
         sanityStepResult.output_data,
         stepResults.length + 1
       );
@@ -157,37 +158,44 @@ export class ValidationWorkflow {
         }
       };
 
-      const claimValidationId = await this.claimStorageService.storeClaimValidation(
-        claimId,
-        payload,
-        initialResult,
-        [],
-        [],
-        {
-          is_valid: false,
-          sanitized_payload: payload,
-          ssp_prediction: { specialty: 'Unknown', subspecialty: 'Unknown', confidence: 'low' },
-          issues: [],
-          warnings: [],
-          cms_ncci_checks: { bundling_issues: [], modifier_requirements: [], frequency_limits: [] },
-          ai_clinical_validation: {
-            overall_appropriate: false,
-            specialty: 'Unknown',
-            subspecialty: 'Unknown',
-            cpt_validation: [],
-            icd_validation: [],
-            modifier_validation: [],
-            place_of_service_validation: { code: '', appropriate: false, confidence: 'low', reasoning: '' },
-            clinical_concerns: [],
-            documentation_quality: 'Unknown',
-            recommendations: []
-          },
-          policy_check_required: false,
-          policy_check_details: {},
-          validation_issues: [],
-          cms_ncci_validation: { is_valid: false, errors: [], warnings: [], passes: [], risk_score: 100 }
-        }
-      );
+      let claimValidationId: string;
+      try {
+        claimValidationId = await this.claimStorageService.storeClaimValidation(
+          claimId,
+          payload,
+          initialResult,
+          [],
+          [],
+          {
+            is_valid: false,
+            sanitized_payload: payload,
+            ssp_prediction: { specialty: 'Unknown', subspecialty: 'Unknown', confidence: 'low' },
+            issues: [],
+            warnings: [],
+            cms_ncci_checks: { bundling_issues: [], modifier_requirements: [], frequency_limits: [] },
+            ai_clinical_validation: {
+              overall_appropriate: false,
+              specialty: 'Unknown',
+              subspecialty: 'Unknown',
+              cpt_validation: [],
+              icd_validation: [],
+              modifier_validation: [],
+              place_of_service_validation: { code: '', appropriate: false, confidence: 'low', reasoning: '' },
+              clinical_concerns: [],
+              documentation_quality: 'Unknown',
+              recommendations: []
+            },
+            policy_check_required: false,
+            policy_check_details: {},
+            validation_issues: [],
+            cms_ncci_validation: { is_valid: false, errors: [], warnings: [], passes: [], risk_score: 100 }
+          }
+        );
+        console.log('✅ Claim validation record stored with ID:', claimValidationId);
+      } catch (error) {
+        console.error('❌ Failed to store claim validation record:', error);
+        throw error;
+      }
 
       console.log(`📊 Initialized claim validation: ${claimValidationId}`);
       return claimValidationId;
@@ -272,6 +280,7 @@ export class ValidationWorkflow {
    */
   private async executePlannerStep(
     claimValidationId: string,
+    payload: ClaimPayload,
     sanityResult: SanityCheckResult,
     stepOrder: number
   ): Promise<ValidationStepResult> {
@@ -279,7 +288,7 @@ export class ValidationWorkflow {
     console.log(`\n📋 Step ${stepOrder}: Running planner...`);
 
     try {
-      const plannerResult = await this.plannerAgent.generateQuestions(sanityResult);
+      const plannerResult = await this.plannerAgent.generateQuestions(payload, sanityResult);
       const stepEndTime = Date.now();
       const duration = stepEndTime - stepStartTime;
 
@@ -353,7 +362,8 @@ export class ValidationWorkflow {
       console.log(`   🔍 Researching question ${i + 1}: ${question.q.substring(0, 50)}...`);
 
       try {
-        const researchResult = await this.researchAgent.executeResearch(question);
+        const researchResults = await this.researchAgent.executeResearch([question]);
+        const researchResult = researchResults[0]; // Get the first (and only) result
         const stepEndTime = Date.now();
         const duration = stepEndTime - stepStartTime;
 
@@ -492,12 +502,23 @@ export class ValidationWorkflow {
    */
   private async storeFinalResults(claimValidationId: string, evaluatorResult: EvaluatorDecision): Promise<void> {
     try {
-      // Update the claim validation record with final results
-      // This would require adding an update method to ClaimStorageService
       console.log(`📊 Storing final results for claim validation: ${claimValidationId}`);
       console.log(`📋 Final Status: ${evaluatorResult.overall_status}`);
+      
+      // Update the claim validation record with final results
+      await this.claimStorageService.updateClaimValidation(claimValidationId, {
+        overall_status: evaluatorResult.overall_status,
+        confidence: evaluatorResult.overall_assessment.estimated_approval_probability > 0.8 ? 'high' : 
+                   evaluatorResult.overall_assessment.estimated_approval_probability > 0.6 ? 'medium' : 'low',
+        processing_time_ms: evaluatorResult.processing_time_ms || 0,
+        overall_assessment: evaluatorResult.overall_assessment,
+        insurance_insights: evaluatorResult.insurance_insights || {}
+      });
+      
+      console.log(`✅ Final results stored successfully`);
     } catch (error) {
       console.error('❌ Failed to store final results:', error);
+      throw error;
     }
   }
 
