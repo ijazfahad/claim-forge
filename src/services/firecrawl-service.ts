@@ -156,7 +156,7 @@ export class FirecrawlService {
               ...(this.apiKey && { 'Authorization': `Bearer ${this.apiKey}` }),
               'Content-Type': 'application/json',
             },
-            timeout: 30000, // Reduced from 45000ms to 30000ms
+            timeout: 60000, // Reduced from 45000ms to 30000ms
           }
         );
 

@@ -139,6 +139,15 @@ Output Format:
    * Perform sanity check on claim payload
    */
   async performSanityCheck(payload: ClaimPayload): Promise<SanityCheckResult> {
+    console.log(`\n🔍 SANITY CHECK STARTING:`);
+    console.log(`   📋 Claim Details:`);
+    console.log(`      🏥 Payer: ${payload.payer}`);
+    console.log(`      🔢 CPT Codes: ${payload.cpt_codes.join(', ')}`);
+    console.log(`      📊 ICD-10 Codes: ${payload.icd10_codes.join(', ')}`);
+    console.log(`      🏷️  Modifiers: ${payload.modifiers && payload.modifiers.length > 0 ? payload.modifiers.join(', ') : 'None'}`);
+    console.log(`      📍 Place of Service: ${payload.place_of_service}`);
+    console.log(`      🗺️  State: ${payload.state}`);
+    
     if (!this.agent) {
       await this.initialize();
     }
@@ -155,9 +164,29 @@ Output Format:
     // }
 
     // Step 1: AI Clinical Validation
+    console.log(`\n   🧠 AI Clinical Validation:`);
     const aiClinicalValidation = await this.performAIClinicalValidation(payload);
+    console.log(`      ✅ Overall Appropriate: ${aiClinicalValidation.overall_appropriate ? 'Yes' : 'No'}`);
+    console.log(`      🏥 Specialty: ${aiClinicalValidation.specialty}`);
+    console.log(`      🔬 Subspecialty: ${aiClinicalValidation.subspecialty}`);
+    console.log(`      📝 Documentation Quality: ${aiClinicalValidation.documentation_quality}`);
+    
+    if (aiClinicalValidation.cpt_validation?.length > 0) {
+      console.log(`      🔍 CPT Validation:`);
+      aiClinicalValidation.cpt_validation.forEach((cpt, index) => {
+        console.log(`         ${index + 1}. ${cpt.code}: ${cpt.appropriate ? '✅ Appropriate' : '❌ Inappropriate'} (${cpt.confidence})`);
+      });
+    }
+    
+    if (aiClinicalValidation.clinical_concerns?.length > 0) {
+      console.log(`      ⚠️  Clinical Concerns:`);
+      aiClinicalValidation.clinical_concerns.forEach((concern, index) => {
+        console.log(`         ${index + 1}. ${concern}`);
+      });
+    }
 
     // Step 2: CMS/NCCI Rules Validation
+    console.log(`\n   📊 CMS/NCCI Rules Validation:`);
     let cmsNcciValidation: ValidationResult;
     try {
       // Retry database connection up to 3 times
@@ -169,11 +198,11 @@ Output Format:
           if (!(await isDatabaseBuilt())) {
             retryCount++;
             if (retryCount < maxRetries) {
-              console.log(`Database connection failed, retrying... (${retryCount}/${maxRetries})`);
+              console.log(`      🔄 Database connection failed, retrying... (${retryCount}/${maxRetries})`);
               await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
               continue;
             } else {
-              console.log('CMS/NCCI database connection failed after retries. Please check database connectivity.');
+              console.log('      ❌ CMS/NCCI database connection failed after retries. Please check database connectivity.');
               throw new Error('CMS/NCCI database connection failed after retries. Check database connectivity.');
             }
           }
@@ -181,7 +210,7 @@ Output Format:
         } catch (dbError) {
           retryCount++;
           if (retryCount < maxRetries) {
-            console.log(`Database connection error, retrying... (${retryCount}/${maxRetries}):`, dbError);
+            console.log(`      🔄 Database connection error, retrying... (${retryCount}/${maxRetries}):`, dbError);
             await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
             continue;
           } else {
@@ -190,6 +219,7 @@ Output Format:
         }
       }
       
+      console.log(`      🔍 Validating claim against CMS/NCCI rules...`);
       cmsNcciValidation = await validateClaim({
         cpt_codes: payload.cpt_codes,
         icd10_codes: payload.icd10_codes,
@@ -197,8 +227,37 @@ Output Format:
         place_of_service: payload.place_of_service,
         note_summary: payload.note_summary
       });
+      
+      console.log(`      📊 CMS/NCCI Results:`);
+      console.log(`         ✅ Valid: ${cmsNcciValidation.is_valid ? 'Yes' : 'No'}`);
+      console.log(`         ⚠️  Risk Score: ${cmsNcciValidation.risk_score}/100`);
+      console.log(`         ❌ Errors: ${cmsNcciValidation.errors.length}`);
+      console.log(`         ⚠️  Warnings: ${cmsNcciValidation.warnings.length}`);
+      console.log(`         ✅ Passes: ${cmsNcciValidation.passes.length}`);
+      
+      if (cmsNcciValidation.errors.length > 0) {
+        console.log(`         🔍 Error Details:`);
+        cmsNcciValidation.errors.forEach((error, index) => {
+          console.log(`            ${index + 1}. [${error.type}] ${error.message}`);
+        });
+      }
+      
+      if (cmsNcciValidation.warnings.length > 0) {
+        console.log(`         ⚠️  Warning Details:`);
+        cmsNcciValidation.warnings.forEach((warning, index) => {
+          console.log(`            ${index + 1}. [${warning.type}] ${warning.message}`);
+        });
+      }
+      
+      if (cmsNcciValidation.passes.length > 0) {
+        console.log(`         ✅ Pass Details:`);
+        cmsNcciValidation.passes.forEach((pass, index) => {
+          console.log(`            ${index + 1}. [${pass.type}] ${pass.message}`);
+        });
+      }
+      
     } catch (error) {
-      console.error('CMS/NCCI validation failed:', error);
+      console.error('      ❌ CMS/NCCI validation failed:', error);
       // Fallback to basic validation
       cmsNcciValidation = {
         errors: [{ type: 'NEEDS_POLICY_CHECK', message: 'CMS/NCCI validation unavailable' }],
@@ -233,6 +292,36 @@ Output Format:
       validation_issues: validationIssues,
       cms_ncci_validation: cmsNcciValidation
     };
+
+    // Log final sanity check summary
+    console.log(`\n   📋 SANITY CHECK SUMMARY:`);
+    console.log(`      ✅ Overall Valid: ${sanityResult.is_valid ? 'Yes' : 'No'}`);
+    console.log(`      🏥 Specialty Prediction: ${sanityResult.ssp_prediction.specialty} / ${sanityResult.ssp_prediction.subspecialty}`);
+    console.log(`      📊 Policy Check Required: ${sanityResult.policy_check_required ? 'Yes' : 'No'}`);
+    console.log(`      ❌ Issues Found: ${sanityResult.issues.length}`);
+    console.log(`      ⚠️  Warnings: ${sanityResult.warnings.length}`);
+    
+    if (sanityResult.issues.length > 0) {
+      console.log(`      🔍 Issues:`);
+      sanityResult.issues.forEach((issue, index) => {
+        console.log(`         ${index + 1}. ${issue}`);
+      });
+    }
+    
+    if (sanityResult.warnings.length > 0) {
+      console.log(`      ⚠️  Warnings:`);
+      sanityResult.warnings.forEach((warning, index) => {
+        console.log(`         ${index + 1}. ${warning}`);
+      });
+    }
+    
+    if (sanityResult.policy_check_required) {
+      console.log(`      📋 Policy Check Details:`);
+      console.log(`         Research Questions: ${sanityResult.policy_check_details?.research_questions?.length || 0}`);
+      console.log(`         Validation Types: ${sanityResult.policy_check_details?.validation_types?.join(', ') || 'N/A'}`);
+    }
+    
+    console.log(`\n✅ SANITY CHECK COMPLETE\n`);
 
       // Skip caching for testing
       // await this.redis.redis.setex(cacheKey, 3600, JSON.stringify(sanityResult));

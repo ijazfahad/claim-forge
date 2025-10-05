@@ -160,7 +160,7 @@ export class ClaimStorageService {
       // Store individual research results
       for (let i = 0; i < researchResults.length; i++) {
         const result = researchResults[i];
-        await this.storeResearchResult(client, claimValidationId, `Q${i + 1}`, result);
+        await this.storeResearchResult(claimValidationId, result);
       }
 
       // Store planner questions
@@ -456,39 +456,6 @@ export class ClaimStorageService {
   }
 
   /**
-   * Store individual research result
-   */
-  private async storeResearchResult(
-    client: PoolClient,
-    claimValidationId: string,
-    questionId: string,
-    result: ResearchResult
-  ): Promise<void> {
-    const query = `
-      INSERT INTO claim_forge.research_results (
-        claim_validation_id, question_id, question_text, answer, confidence, source,
-        extraction_method, processing_time_ms, escalation_reason, firecrawl_data,
-        multi_model_data, recommendations
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-    `;
-
-    await client.query(query, [
-      claimValidationId,
-      questionId,
-      result.question,
-      result.answer,
-      result.confidence,
-      result.source,
-      result.metadata.extraction_method,
-      result.metadata.processing_time,
-      result.metadata.escalation_reason,
-      JSON.stringify(result.firecrawl_data),
-      JSON.stringify(result.multi_model_data),
-      result.recommendations
-    ]);
-  }
-
-  /**
    * Store planner question
    */
   private async storePlannerQuestion(
@@ -567,6 +534,118 @@ export class ClaimStorageService {
 
     } catch (error) {
       console.error('Error getting validation stats:', error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Store detailed research result
+   */
+  async storeResearchResult(claimValidationId: string, researchResult: ResearchResult): Promise<void> {
+    const client = await this.pool.connect();
+    
+    try {
+      const query = `
+        INSERT INTO claim_forge.research_results (
+          claim_validation_id, question_id, question_text, answer, confidence, source,
+          extraction_method, processing_time_ms, escalation_reason, firecrawl_data,
+          multi_model_data, recommendations
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      `;
+
+      await client.query(query, [
+        claimValidationId,
+        `Q${Date.now()}`, // Generate a unique question ID
+        researchResult.question,
+        researchResult.answer,
+        researchResult.confidence,
+        researchResult.source,
+        researchResult.metadata.extraction_method,
+        researchResult.metadata.processing_time,
+        researchResult.metadata.escalation_reason,
+        JSON.stringify(researchResult.metadata.structured_data),
+        JSON.stringify(researchResult.enhanced_analysis),
+        researchResult.recommendations // Remove JSON.stringify for array
+      ]);
+
+      console.log(`✅ Research result stored for validation ${claimValidationId}`);
+
+    } catch (error) {
+      console.error('Error storing research result:', error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Store detailed planner questions
+   */
+  async storePlannerQuestions(claimValidationId: string, questions: ValidationQuestion[]): Promise<void> {
+    const client = await this.pool.connect();
+    
+    try {
+      const query = `
+        INSERT INTO claim_forge.planner_questions (
+          claim_validation_id, question_number, question_type, question_text,
+          accept_if, search_queries, risk_flags, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+      `;
+
+      for (const question of questions) {
+        await client.query(query, [
+          claimValidationId,
+          question.n,
+          question.type,
+          question.q,
+          question.accept_if,
+          question.search_queries,
+          JSON.stringify(question.risk_flags)
+        ]);
+      }
+
+      console.log(`✅ ${questions.length} planner questions stored for validation ${claimValidationId}`);
+
+    } catch (error) {
+      console.error('Error storing planner questions:', error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Store detailed sanity check results
+   */
+  async storeSanityCheckResults(claimValidationId: string, sanityResult: SanityCheckResult): Promise<void> {
+    const client = await this.pool.connect();
+    
+    try {
+      const query = `
+        INSERT INTO claim_forge.sanity_check_results (
+          claim_validation_id, cpt_codes, icd_codes, modifiers, place_of_service,
+          clinical_assessment, cms_ncci_results, ssp_predictions, recommendations
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      `;
+
+      await client.query(query, [
+        claimValidationId,
+        sanityResult.sanitized_payload.cpt_codes,
+        sanityResult.sanitized_payload.icd10_codes,
+        sanityResult.sanitized_payload.modifiers,
+        sanityResult.sanitized_payload.place_of_service,
+        JSON.stringify(sanityResult.ai_clinical_validation),
+        JSON.stringify(sanityResult.cms_ncci_checks),
+        JSON.stringify(sanityResult.ssp_prediction),
+        [...sanityResult.issues, ...sanityResult.warnings] // Remove JSON.stringify for array
+      ]);
+
+      console.log(`✅ Sanity check results stored for validation ${claimValidationId}`);
+
+    } catch (error) {
+      console.error('Error storing sanity check results:', error);
       throw error;
     } finally {
       client.release();

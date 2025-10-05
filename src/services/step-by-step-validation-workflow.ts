@@ -106,7 +106,7 @@ export class StepByStepValidationWorkflow {
       stepResults.push(evaluatorStepResult);
 
       // Store final results
-      await this.storeFinalResults(claimValidationId, evaluatorStepResult.output_data);
+      await this.storeFinalResults(claimValidationId, evaluatorStepResult.output_data, Date.now() - startTime);
 
       const processingTime = Date.now() - startTime;
       console.log(`✅ Validation completed in ${processingTime}ms`);
@@ -255,6 +255,9 @@ export class StepByStepValidationWorkflow {
         ...stepResult
       });
 
+      // Store detailed sanity check results
+      await this.claimStorageService.storeSanityCheckResults(claimValidationId, sanityResult);
+
       return stepResult;
 
     } catch (error) {
@@ -322,6 +325,9 @@ export class StepByStepValidationWorkflow {
         claim_validation_id: claimValidationId,
         ...stepResult
       });
+
+      // Store detailed planner questions
+      await this.claimStorageService.storePlannerQuestions(claimValidationId, plannerResult.questions);
 
       return stepResult;
 
@@ -397,6 +403,9 @@ export class StepByStepValidationWorkflow {
           claim_validation_id: claimValidationId,
           ...stepResult
         });
+
+        // Store detailed research result
+        await this.claimStorageService.storeResearchResult(claimValidationId, researchResult);
 
         stepResults.push(stepResult);
 
@@ -508,22 +517,76 @@ export class StepByStepValidationWorkflow {
   /**
    * Store final results in claim validation record
    */
-  private async storeFinalResults(claimValidationId: string, evaluatorResult: EvaluatorDecision): Promise<void> {
+  private async storeFinalResults(claimValidationId: string, evaluatorResult: EvaluatorDecision, processingTimeMs: number): Promise<void> {
     try {
       console.log(`📊 Storing final results for claim validation: ${claimValidationId}`);
       console.log(`📋 Final Status: ${evaluatorResult.overall_status}`);
+      console.log(`🎯 Approval Probability: ${(evaluatorResult.overall_assessment.estimated_approval_probability * 100).toFixed(1)}%`);
+      console.log(`⏱️  Processing Time: ${processingTimeMs}ms`);
+      
+      // Log detailed evaluation results
+      console.log(`\n📋 EVALUATION RESULTS:`);
+      console.log(`   🎯 Overall Assessment:`);
+      console.log(`      📊 Approval Probability: ${(evaluatorResult.overall_assessment.estimated_approval_probability * 100).toFixed(1)}%`);
+      console.log(`      ✅ Approval Criteria Met: ${evaluatorResult.overall_assessment.approval_criteria_met ? 'Yes' : 'No'}`);
+      console.log(`      💭 Decision Rationale: ${evaluatorResult.overall_assessment.decision_rationale}`);
+      
+      // Log risk factors
+      if (evaluatorResult.overall_assessment.risk_factors?.length > 0) {
+        console.log(`   ⚠️  Risk Factors:`);
+        evaluatorResult.overall_assessment.risk_factors.forEach((factor: string, index: number) => {
+          console.log(`      ${index + 1}. ${factor}`);
+        });
+      }
+      
+      // Log blockers
+      if (evaluatorResult.overall_assessment.blockers?.length > 0) {
+        console.log(`   🚫 Blockers:`);
+        evaluatorResult.overall_assessment.blockers.forEach((blocker: any, index: number) => {
+          console.log(`      ${index + 1}. [${blocker.severity.toUpperCase()}] ${blocker.reason}`);
+          console.log(`         Question ID: ${blocker.question_id}`);
+        });
+      }
+      
+      // Log next steps
+      if (evaluatorResult.overall_assessment.next_steps?.length > 0) {
+        console.log(`   📋 Next Steps:`);
+        evaluatorResult.overall_assessment.next_steps.forEach((step: string, index: number) => {
+          console.log(`      ${index + 1}. ${step}`);
+        });
+      }
+      
+      // Log question analysis
+      if (evaluatorResult.question_analysis?.length > 0) {
+        console.log(`   🔍 Question Analysis:`);
+        evaluatorResult.question_analysis.forEach((qa: any, index: number) => {
+          console.log(`      ${index + 1}. [${qa.status}] ${qa.question.substring(0, 80)}${qa.question.length > 80 ? '...' : ''}`);
+          console.log(`         📊 Confidence: ${(qa.confidence * 100).toFixed(1)}% | Risk: ${qa.risk_level} | Method: ${qa.method}`);
+          if (qa.recommendations?.length > 0) {
+            console.log(`         💡 Recommendations: ${qa.recommendations.join(', ')}`);
+          }
+        });
+      }
+      
+      // Log insurance insights
+      if (evaluatorResult.insurance_insights && Object.keys(evaluatorResult.insurance_insights).length > 0) {
+        console.log(`   🏥 Insurance Insights:`);
+        Object.entries(evaluatorResult.insurance_insights).forEach(([key, value]) => {
+          console.log(`      📋 ${key.replace(/_/g, ' ').toUpperCase()}: ${value}`);
+        });
+      }
       
       // Update the claim validation record with final results
       await this.claimStorageService.updateClaimValidation(claimValidationId, {
         overall_status: evaluatorResult.overall_status,
         confidence: evaluatorResult.overall_assessment.estimated_approval_probability > 0.8 ? 'high' : 
                    evaluatorResult.overall_assessment.estimated_approval_probability > 0.6 ? 'medium' : 'low',
-        processing_time_ms: evaluatorResult.processing_time_ms || 0,
+        processing_time_ms: processingTimeMs,
         overall_assessment: evaluatorResult.overall_assessment,
         insurance_insights: evaluatorResult.insurance_insights || {}
       });
       
-      console.log(`✅ Final results stored successfully`);
+      console.log(`\n✅ Final results stored successfully`);
     } catch (error) {
       console.error('❌ Failed to store final results:', error);
       throw error;

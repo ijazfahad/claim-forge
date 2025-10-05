@@ -20,28 +20,28 @@ services:
   #     - claim-validator-network
 
   # PostgreSQL database service
-  # postgres:
-  #   image: postgres:15-alpine
-  #   container_name: claim-validator-postgres
-  #   environment:
-  #     POSTGRES_DB: claim_validator
-  #     POSTGRES_USER: claimvalidator
-  #     POSTGRES_PASSWORD: claimvalidator123
-  #     POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
-  #   ports:
-  #     - "5433:5432"
-  #   volumes:
-  #     - postgres_data:/var/lib/postgresql/data
-  #     - ./src/migrations:/docker-entrypoint-initdb.d
-  #   restart: unless-stopped
-  #   networks:
-  #     - claim-validator-network
-  #   healthcheck:
-  #     test: ["CMD-SHELL", "pg_isready -U claimvalidator -d claim_validator"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 5
-  #     start_period: 30s
+  postgres:
+    image: postgres:15-alpine
+    container_name: claim-validator-postgres
+    environment:
+      POSTGRES_DB: claim_validator
+      POSTGRES_USER: claimvalidator
+      POSTGRES_PASSWORD: claimvalidator123
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./src/migrations:/docker-entrypoint-initdb.d
+    restart: unless-stopped
+    networks:
+      - claim-validator-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U claimvalidator -d claim_validator"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
   # Claim Validator API
   api:
@@ -65,9 +65,11 @@ services:
       - GOOGLE_SEARCH_ENGINE_ID=${GOOGLE_SEARCH_ENGINE_ID}
       - FIRECRAWL_API_KEY=${FIRECRAWL_API_KEY}
       - FIRECRAWL_API_URL=${FIRECRAWL_API_URL:-http://host.docker.internal:3002}
-    # depends_on:
-    #   claim-validator-redis:
-    #     condition: service_healthy
+    depends_on:
+      # claim-validator-redis:
+      #   condition: service_healthy
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s
