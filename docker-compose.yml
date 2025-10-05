@@ -2,46 +2,46 @@
 
 services:
   # Redis service for Claim Validator
-  claim-validator-redis:
-    image: redis:7-alpine
-    container_name: claim-validator-redis
-    restart: unless-stopped
-    ports:
-      - "6380:6379"  # Use different port to avoid conflict with Firecrawl Redis
-    volumes:
-      - claim_validator_redis_data:/data
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-claimvalidator123}
-    healthcheck:
-      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
-      interval: 30s
-      timeout: 3s
-      retries: 5
-    networks:
-      - claim-validator-network
+  # claim-validator-redis:
+  #   image: redis:7-alpine
+  #   container_name: claim-validator-redis
+  #   restart: unless-stopped
+  #   ports:
+  #     - "6380:6379"  # Use different port to avoid conflict with Firecrawl Redis
+  #   volumes:
+  #     - claim_validator_redis_data:/data
+  #   command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-claimvalidator123}
+  #   healthcheck:
+  #     test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+  #     interval: 30s
+  #     timeout: 3s
+  #     retries: 5
+  #   networks:
+  #     - claim-validator-network
 
   # PostgreSQL database service
-  postgres:
-    image: postgres:15-alpine
-    container_name: claim-validator-postgres
-    environment:
-      POSTGRES_DB: claim_validator
-      POSTGRES_USER: claimvalidator
-      POSTGRES_PASSWORD: claimvalidator123
-      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
-    ports:
-      - "5433:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./src/migrations:/docker-entrypoint-initdb.d
-    restart: unless-stopped
-    networks:
-      - claim-validator-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U claimvalidator -d claim_validator"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
+  # postgres:
+  #   image: postgres:15-alpine
+  #   container_name: claim-validator-postgres
+  #   environment:
+  #     POSTGRES_DB: claim_validator
+  #     POSTGRES_USER: claimvalidator
+  #     POSTGRES_PASSWORD: claimvalidator123
+  #     POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+  #   ports:
+  #     - "5433:5432"
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #     - ./src/migrations:/docker-entrypoint-initdb.d
+  #   restart: unless-stopped
+  #   networks:
+  #     - claim-validator-network
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U claimvalidator -d claim_validator"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 5
+  #     start_period: 30s
 
   # Claim Validator API
   api:
@@ -56,19 +56,18 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
-      - DATABASE_URL=postgresql://claimvalidator:claimvalidator123@postgres:5432/claim_validator
-      - REDIS_URL=redis://claim-validator-redis:6379
+      - DATABASE_URL=${DATABASE_URL}
+      - PGSSLMODE=disable
+      - REDIS_URL=${REDIS_URL}
       - REDIS_PASSWORD=${REDIS_PASSWORD:-claimvalidator123}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - GOOGLE_SEARCH_API_KEY=${GOOGLE_SEARCH_API_KEY}
       - GOOGLE_SEARCH_ENGINE_ID=${GOOGLE_SEARCH_ENGINE_ID}
       - FIRECRAWL_API_KEY=${FIRECRAWL_API_KEY}
       - FIRECRAWL_API_URL=${FIRECRAWL_API_URL:-http://host.docker.internal:3002}
-    depends_on:
-      claim-validator-redis:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
+    # depends_on:
+    #   claim-validator-redis:
+    #     condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s

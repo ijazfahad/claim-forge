@@ -112,7 +112,11 @@ export class StepByStepValidationWorkflow {
       console.log(`✅ Validation completed in ${processingTime}ms`);
       console.log(`📊 Final Status: ${evaluatorStepResult.output_data.overall_status}`);
 
-      return evaluatorStepResult.output_data;
+      // Include claim_id in the final result
+      return {
+        ...evaluatorStepResult.output_data,
+        claim_id: claimId
+      };
 
     } catch (error) {
       console.error('❌ Validation workflow failed:', error);
@@ -122,7 +126,11 @@ export class StepByStepValidationWorkflow {
         await this.storeErrorStep(claimValidationId, 'workflow_error', error, stepResults.length + 1);
       }
 
-      return await this.createFailureResult(claimId, stepResults, startTime, error);
+      const failureResult = await this.createFailureResult(claimId, stepResults, startTime, error);
+      return {
+        ...failureResult,
+        claim_id: claimId
+      };
     }
   }
 

@@ -114,47 +114,115 @@ export class FirecrawlService {
     query?: string
   ): Promise<FirecrawlResponse> {
     try {
-      // Extract content from multiple URLs in parallel (limit to top 3 for performance)
+      // Try single request with multiple URLs first, then fallback to individual requests
       const urlsToProcess = urls.slice(0, 3);
       
+      // First try: Single request with multiple URLs
+      try {
+        console.log(`🔍 Attempting single request with ${urlsToProcess.length} URLs...`);
+        const multiUrlResponse = await axios.post(
+          `${this.apiUrl}/v1/extract`,
+          {
+            urls: urlsToProcess, // Multiple URLs in single request
+            schema: {
+              type: "object",
+              properties: {
+                answer: {
+                  type: "string",
+                  description: "Direct answer to the question"
+                },
+                confidence_level: {
+                  type: "string",
+                  enum: ["high", "medium", "low"],
+                  description: "Confidence level of the answer"
+                },
+                policy_reference: {
+                  type: "object",
+                  properties: {
+                    url: { type: "string", description: "Source URL" },
+                    paragraph: { type: "string", description: "Specific paragraph containing the answer" },
+                    sentence: { type: "string", description: "Exact sentence with the answer" },
+                    page_section: { type: "string", description: "Section or heading where found" },
+                    document_type: { type: "string", description: "Type of policy document" }
+                  }
+                }
+              },
+              required: ["answer", "confidence_level", "policy_reference"]
+            },
+            prompt: `You are analyzing medical policy documents for claim validation. Question: ${question}. Query context: ${query || question}. Focus on policies, coverage rules, eligibility requirements, and coding guidelines. Extract specific information that directly answers the question and provide structured data about coverage rules, eligibility requirements, and coding guidelines.`
+          },
+          {
+            headers: {
+              ...(this.apiKey && { 'Authorization': `Bearer ${this.apiKey}` }),
+              'Content-Type': 'application/json',
+            },
+            timeout: 30000, // Reduced from 45000ms to 30000ms
+          }
+        );
+
+        if (multiUrlResponse.data.data) {
+          console.log(`✅ Multi-URL extraction successful for ${urlsToProcess.length} URLs`);
+          const extractedData = multiUrlResponse.data.data;
+          
+          return {
+            success: true,
+            data: {
+              content: extractedData.answer || extractedData.extracted_content || '',
+              markdown: extractedData.answer || extractedData.extracted_content || '',
+              structured_data: extractedData,
+              metadata: {
+                title: `Multi-URL Extraction for ${urlsToProcess.length} URLs`,
+                description: `Medical policy data extracted for claim validation`,
+                url: urlsToProcess[0], // Primary URL for reference
+              },
+            },
+          };
+        }
+      } catch (multiUrlError) {
+        console.log(`⚠️  Multi-URL request failed, falling back to individual requests: ${multiUrlError instanceof Error ? multiUrlError.message : 'Unknown error'}`);
+      }
+      
+      // Fallback: Individual requests for each URL
       const extractPromises = urlsToProcess.map(async (url) => {
         try {
           // Try /v1/extract endpoint first (cost-effective choice)
           const extractResponse = await axios.post(
             `${this.apiUrl}/v1/extract`,
             {
-              urls: [url],
-              prompt: `Extract relevant information about: ${question}. Focus on policies, coverage rules, eligibility requirements, and coding guidelines. Query context: ${query || question}`,
+              urls: [url], // Single URL per request for extract endpoint
               schema: {
                 type: "object",
                 properties: {
-                  extracted_content: {
+                  answer: {
                     type: "string",
-                    description: "Relevant policy or coverage information extracted from the page"
+                    description: "Direct answer to the question"
                   },
-                  key_points: {
-                    type: "array",
-                    items: { type: "string" },
-                    description: "Key points related to the question"
+                  confidence_level: {
+                    type: "string",
+                    enum: ["high", "medium", "low"],
+                    description: "Confidence level of the answer"
                   },
-                  policy_details: {
+                  policy_reference: {
                     type: "object",
                     properties: {
-                      coverage_rules: { type: "array", items: { type: "string" } },
-                      eligibility_requirements: { type: "array", items: { type: "string" } },
-                      coding_guidelines: { type: "array", items: { type: "string" } }
+                      url: { type: "string", description: "Source URL" },
+                      paragraph: { type: "string", description: "Specific paragraph containing the answer" },
+                      sentence: { type: "string", description: "Exact sentence with the answer" },
+                      page_section: { type: "string", description: "Section or heading where found" },
+                      document_type: { type: "string", description: "Type of policy document" }
                     }
                   }
                 },
-                required: ["extracted_content"]
-              }
+                required: ["answer", "confidence_level", "policy_reference"]
+              },
+              prompt: `You are analyzing a medical policy document for claim validation. Question: ${question}. Query context: ${query || question}. Focus on policies, coverage rules, eligibility requirements, and coding guidelines. Extract specific information that directly answers the question and provide structured data about coverage rules, eligibility requirements, and coding guidelines.`
             },
             {
               headers: {
                 ...(this.apiKey && { 'Authorization': `Bearer ${this.apiKey}` }),
                 'Content-Type': 'application/json',
               },
-              timeout: 45000,
+              timeout: 30000, // Reduced from 45000ms to 30000ms
             }
           );
 
@@ -170,28 +238,51 @@ export class FirecrawlService {
                 url: url,
                 formats: [{
                   type: "json",
-                  prompt: `Extract relevant information about: ${question}. Focus on policies, coverage rules, eligibility requirements, and coding guidelines. Query context: ${query || question}`,
+                  prompt: `You are analyzing a medical policy document for claim validation. Question: ${question}. Query context: ${query || question}. Focus on policies, coverage rules, eligibility requirements, and coding guidelines. Extract specific information that directly answers the question and provide structured data about coverage rules, eligibility requirements, and coding guidelines.`,
                   schema: {
-                  type: "object",
-                  properties: {
-                    extracted_content: { type: "string", description: "Relevant policy information" },
-                    key_points: { type: "array", items: { type: "string" }, description: "Key points" },
-                    policy_details: {
-                      type: "object",
-                      properties: {
-                        coverage_rules: { type: "array", items: { type: "string" } },
-                        eligibility_requirements: { type: "array", items: { type: "string" } },
-                        coding_guidelines: { type: "array", items: { type: "string" } }
+                    type: "object",
+                    properties: {
+                      question: {
+                        type: "string",
+                        description: "The question being asked about medical policy"
+                      },
+                      answer: {
+                        type: "string",
+                        description: "Direct answer about the medical policy question"
+                      },
+                      extracted_content: { 
+                        type: "string", 
+                        description: "Relevant policy information" 
+                      },
+                      key_points: { 
+                        type: "array", 
+                        items: { type: "string" }, 
+                        description: "Key points" 
+                      },
+                      policy_details: {
+                        type: "object",
+                        properties: {
+                          coverage_rules: { type: "array", items: { type: "string" } },
+                          eligibility_requirements: { type: "array", items: { type: "string" } },
+                          coding_guidelines: { type: "array", items: { type: "string" } }
+                        }
+                      },
+                      document_type: {
+                        type: "string",
+                        description: "Type of document analyzed"
+                      },
+                      confidence_level: {
+                        type: "string",
+                        enum: ["high", "medium", "low"]
                       }
-                    }
-                  },
-                  required: ["extracted_content"]
+                    },
+                    required: ["question", "answer", "extracted_content"]
                   }
                 }]
               },
               {
                 headers: { ...(this.apiKey && { 'Authorization': `Bearer ${this.apiKey}` }), 'Content-Type': 'application/json' },
-                timeout: 45000,
+                timeout: 30000, // Reduced from 45000ms to 30000ms
               }
             );
             
@@ -204,11 +295,15 @@ export class FirecrawlService {
           }
           
           console.log(`🔍 Successfully extracted data from: ${url}`);
+          console.log(`   📊 Document Type: ${extractedData?.document_type || 'Unknown'}`);
+          console.log(`   📊 Confidence Level: ${extractedData?.confidence_level || 'Unknown'}`);
+          console.log(`   📊 Answer Length: ${extractedData?.answer?.length || 0} chars`);
+          
           return {
             url,
             success: true,
-            content: extractedData?.extracted_content || '',
-            markdown: extractedData?.extracted_content || '', // Use extracted content as markdown
+            content: extractedData?.answer || extractedData?.extracted_content || '',
+            markdown: extractedData?.answer || extractedData?.extracted_content || '',
             structured_data: extractedData,
             metadata: {
               title: `Extracted Data for ${url}`,
@@ -303,7 +398,7 @@ export class FirecrawlService {
             },
             {
               headers: { ...(this.apiKey && { 'Authorization': `Bearer ${this.apiKey}` }), 'Content-Type': 'application/json' },
-              timeout: 45000,
+              timeout: 30000, // Reduced from 45000ms to 30000ms
             }
           );
 

@@ -4,8 +4,6 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
 import path from 'path';
-import claimsRouter from './routes/claims';
-import testRouter from './routes/test';
 import claimValidationApiRouter from './routes/claim-validation-api';
 
 // Load environment variables
@@ -59,8 +57,6 @@ app.get('/health', (req, res) => {
 });
 
 // API routes
-app.use('/api/claims', claimsRouter);
-app.use('/api/test', testRouter);
 app.use('/api', claimValidationApiRouter);
 
 // Serve workflow UI at root

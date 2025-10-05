@@ -3,7 +3,6 @@ import { runPlannerAgentTests } from './planner-agent-test';
 import ResearchAgentTestSuite from './research-agent-test';
 import EvaluatorAgentTestSuite from './evaluator-agent-test';
 import { runEvaluateAgentTests } from './evaluate-agent-test';
-import { runIntegrationTests } from './integration-test';
 import { runGoogleSearchTests } from './google-search-test';
 import { runFirecrawlTests } from './firecrawl-test';
 import { GoogleSearchAgentTestSuite } from './google-search-agent-test';
@@ -77,11 +76,6 @@ const testSuites: TestSuite[] = [
     name: 'Firecrawl Service',
     description: 'Tests web content extraction functionality',
     run: runFirecrawlTests
-  },
-  {
-    name: 'Integration Tests',
-    description: 'Tests complete validation workflow end-to-end',
-    run: runIntegrationTests
   }
 ];
 

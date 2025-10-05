@@ -80,13 +80,14 @@ export interface FirecrawlResponse {
     content: string;
     markdown: string;
     structured_data?: {
-      extracted_content?: string;
-      confidence_score?: number;
-      key_points?: string[];
-      policy_details?: {
-        coverage_rules?: string[];
-        eligibility_requirements?: string[];
-        coding_guidelines?: string[];
+      answer?: string;
+      confidence_level?: 'high' | 'medium' | 'low';
+      policy_reference?: {
+        url?: string;
+        paragraph?: string;
+        sentence?: string;
+        page_section?: string;
+        document_type?: string;
       };
     };
     metadata: {
@@ -109,5 +110,50 @@ export interface GoogleSearchResponse {
   items: GoogleSearchResult[];
   searchInformation: {
     totalResults: string;
+  };
+}
+
+// Enhanced Research Result types for conflict analysis
+export interface PolicyReference {
+  url: string;
+  paragraph?: string;
+  sentence?: string;
+  page_section?: string;
+  line_number?: number;
+  document_type?: string;
+}
+
+export interface IndividualResearchResult {
+  source: 'Firecrawl' | 'Claude-3.5' | 'GPT-4' | 'DeepSeek-V3';
+  answer: string;
+  confidence: number;
+  policy_reference?: PolicyReference;
+  metadata?: any;
+}
+
+export interface ConflictInfo {
+  type: 'COVERAGE_CONFLICT' | 'REQUIREMENT_CONFLICT' | 'MODIFIER_CONFLICT' | 'FREQUENCY_CONFLICT' | 'ELIGIBILITY_CONFLICT';
+  description: string;
+  conflicting_sources: string[];
+  conflicting_answers: { [source: string]: string };
+}
+
+export interface EnhancedResearchResult {
+  question: string;
+  final_answer: string;
+  confidence: number;
+  consensus_level: '4/4_AGREE' | '3/4_AGREE' | '2/4_AGREE' | '1/4_AGREE' | 'NO_CONSENSUS';
+  conflicts: ConflictInfo[];
+  individual_results: {
+    firecrawl?: IndividualResearchResult;
+    claude?: IndividualResearchResult;
+    gpt?: IndividualResearchResult;
+    deepseek?: IndividualResearchResult;
+  };
+  recommendations: string[];
+  metadata: {
+    extraction_method: 'conflict-analysis';
+    processing_time: number;
+    escalation_reason?: string;
   };
 }
