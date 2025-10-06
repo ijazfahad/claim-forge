@@ -56,7 +56,7 @@ export class GoogleSearchAgent {
         console.log(`   🔎 Searching: "${searchQuery}"`);
         
         try {
-          const results = await this.googleSearchService.searchMedicalCoding(searchQuery, 2);
+          const results = await this.googleSearchService.searchMedicalCoding(searchQuery, 3);
           questionResults.push(...results);
           allSearchQueries.push(searchQuery);
           
@@ -75,7 +75,7 @@ export class GoogleSearchAgent {
       const searchResult: SearchResult = {
         question,
         search_queries: allSearchQueries,
-        results: uniqueResults.slice(0, 2), // Limit to top 2 results
+        results: uniqueResults.slice(0, 3), // Limit to top 3 results
         total_results: uniqueResults.length,
         search_timestamp: new Date().toISOString()
       };

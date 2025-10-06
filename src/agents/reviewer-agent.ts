@@ -109,26 +109,73 @@ ANALYSIS CRITERIA:
 
     const reviewedResults: ReviewerResult[] = [];
 
+    console.log(`\n🔍 REVIEWER AGENT: Starting review of ${researchResults.length} research result(s)`);
+    console.log('🎯 Goal: Detect conflicts and provide unified answers');
+    console.log('📊 Input: Research results from Firecrawl + Multi-Model analysis');
+
     for (let i = 0; i < researchResults.length; i++) {
       const result = researchResults[i];
       const question = questions[i];
       
+      console.log(`\n${'='.repeat(50)}`);
+      console.log(`🔍 REVIEWING QUESTION ${i + 1}/${researchResults.length}`);
+      console.log(`${'='.repeat(50)}`);
+      console.log(`📝 Question: ${question.q}`);
+      console.log(`🏷️  Type: ${question.type}`);
+      console.log(`⚠️  Risk Flags: ${Object.entries(question.risk_flags).filter(([k,v]) => v).map(([k,v]) => k).join(', ') || 'None'}`);
+      
       try {
-        console.log(`\n🔍 REVIEWING Question ${i + 1}:`);
-        console.log(`   📝 Question: ${question.q}`);
-        
         // Prepare input for review analysis
         const reviewInput = this.prepareReviewAnalysisInput(result, question);
         
+        console.log(`\n📊 INPUT DATA ANALYSIS:`);
+        if (reviewInput.firecrawl_result) {
+          console.log(`   🔥 Firecrawl Result:`);
+          console.log(`      📊 Confidence: ${(reviewInput.firecrawl_result.confidence * 100).toFixed(1)}%`);
+          console.log(`      📝 Answer: "${reviewInput.firecrawl_result.answer.substring(0, 150)}${reviewInput.firecrawl_result.answer.length > 150 ? '...' : ''}"`);
+          console.log(`      🔗 URLs Processed: ${reviewInput.firecrawl_result.urls_processed?.length || 0}`);
+        } else {
+          console.log(`   🔥 Firecrawl Result: Not available`);
+        }
+        
+        if (reviewInput.individual_model_results) {
+          console.log(`   🤖 Multi-Model Results:`);
+          if (reviewInput.individual_model_results.claude) {
+            console.log(`      🧠 Claude: ${(reviewInput.individual_model_results.claude.confidence * 100).toFixed(1)}%`);
+          }
+          if (reviewInput.individual_model_results.gpt5) {
+            console.log(`      🤖 GPT-5: ${(reviewInput.individual_model_results.gpt5.confidence * 100).toFixed(1)}%`);
+          }
+          if (reviewInput.individual_model_results.deepseek) {
+            console.log(`      🎯 DeepSeek: ${(reviewInput.individual_model_results.deepseek.confidence * 100).toFixed(1)}%`);
+          }
+        } else {
+          console.log(`   🤖 Multi-Model Results: Not available`);
+        }
+        
         const input = `
-Review and analyze this research result:
+Review and analyze these research results for conflicts and provide a unified answer:
 
 QUESTION: ${question.q}
 QUESTION TYPE: ${question.type}
 RISK FLAGS: ${JSON.stringify(question.risk_flags)}
 
-RESEARCH RESULT DATA:
+RAW RESEARCH DATA:
 ${JSON.stringify(reviewInput, null, 2)}
+
+ANALYSIS INSTRUCTIONS:
+1. **Compare Individual Results**: Look at Firecrawl result vs individual model results (Claude, GPT-5, DeepSeek)
+2. **Detect Conflicts**: Identify any contradictions between sources
+3. **Semantic Analysis**: Consider if different phrasings mean the same thing
+4. **Confidence Weighting**: Give more weight to higher confidence sources
+5. **Source Quality**: Consider reliability of each source
+6. **Provide Unified Answer**: Synthesize the best answer from all sources
+
+CONFLICT DETECTION EXAMPLES:
+- Coverage: "Covered" vs "Not covered" = CONFLICT
+- Requirements: "PA required" vs "No PA needed" = CONFLICT  
+- Modifiers: "Modifier 25 needed" vs "No modifier needed" = CONFLICT
+- Confidence: High confidence vs Low confidence on same topic = POTENTIAL CONFLICT
 
 Perform comprehensive review and provide a unified answer.
 `;
@@ -161,31 +208,47 @@ Perform comprehensive review and provide a unified answer.
           processing_time_ms: processingTime
         };
 
-        // Log review results
-        console.log(`   ✅ Review Status: ${reviewedResult.review_status}`);
-        console.log(`   📊 Final Confidence: ${(reviewedResult.confidence * 100).toFixed(1)}%`);
+        console.log(`\n✅ REVIEW RESULTS:`);
+        console.log(`   📊 Review Status: ${reviewedResult.review_status}`);
+        console.log(`   🎯 Final Confidence: ${(reviewedResult.confidence * 100).toFixed(1)}%`);
+        console.log(`   📝 Final Answer: "${reviewedResult.reviewed_answer.substring(0, 200)}${reviewedResult.reviewed_answer.length > 200 ? '...' : ''}"`);
         console.log(`   🔍 Conflicts Detected: ${reviewedResult.review_analysis.detected_conflicts.length}`);
         console.log(`   🎯 Review Strategy: ${reviewedResult.review_analysis.resolution_strategy}`);
+        console.log(`   📈 Confidence Adjustment: ${reviewedResult.review_analysis.confidence_adjustment > 0 ? '+' : ''}${(reviewedResult.review_analysis.confidence_adjustment * 100).toFixed(1)}%`);
+        
+        // Log source contributions
+        console.log(`\n📊 SOURCE CONTRIBUTIONS:`);
+        console.log(`   🔥 Firecrawl: ${(reviewedResult.source_analysis.firecrawl_contribution * 100).toFixed(1)}%`);
+        console.log(`   🧠 Claude: ${(reviewedResult.source_analysis.claude_contribution * 100).toFixed(1)}%`);
+        console.log(`   🤖 GPT-5: ${(reviewedResult.source_analysis.gpt5_contribution * 100).toFixed(1)}%`);
+        console.log(`   🎯 DeepSeek: ${(reviewedResult.source_analysis.deepseek_contribution * 100).toFixed(1)}%`);
         
         if (reviewedResult.review_analysis.detected_conflicts.length > 0) {
-          console.log(`   ⚠️  Detected Conflicts:`);
+          console.log(`\n⚠️  DETECTED CONFLICTS:`);
           reviewedResult.review_analysis.detected_conflicts.forEach((conflict, index) => {
-            console.log(`      ${index + 1}. ${conflict.type.toUpperCase()}: ${conflict.description}`);
-            console.log(`         Sources: ${conflict.conflicting_sources.join(', ')}`);
-            console.log(`         Severity: ${conflict.severity}`);
-            console.log(`         Suggestion: ${conflict.resolution_suggestion}`);
+            console.log(`   ${index + 1}. ${conflict.type.toUpperCase()} CONFLICT:`);
+            console.log(`      📝 Description: ${conflict.description}`);
+            console.log(`      🔍 Conflicting Sources: ${conflict.conflicting_sources.join(', ')}`);
+            console.log(`      ⚠️  Severity: ${conflict.severity.toUpperCase()}`);
+            console.log(`      💡 Resolution Suggestion: ${conflict.resolution_suggestion}`);
           });
+        } else {
+          console.log(`\n✅ NO CONFLICTS DETECTED - All sources agree or complement each other`);
         }
 
-        console.log(`   💡 Recommendations:`);
+        console.log(`\n💡 RECOMMENDATIONS:`);
         reviewedResult.recommendations.forEach((rec, index) => {
-          console.log(`      ${index + 1}. ${rec}`);
+          console.log(`   ${index + 1}. ${rec}`);
         });
-
+        
+        console.log(`\n⏱️  Processing Time: ${reviewedResult.processing_time_ms}ms`);
+        
         reviewedResults.push(reviewedResult);
 
       } catch (error) {
-        console.error(`Review failed for question ${i + 1}:`, error);
+        console.error(`\n❌ REVIEWER AGENT FAILED for question ${i + 1}:`, error);
+        console.log(`   📝 Question: ${question.q}`);
+        console.log(`   🔍 Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
         
         // Fallback to original result
         const fallbackResult: ReviewerResult = {
@@ -214,22 +277,56 @@ Perform comprehensive review and provide a unified answer.
           processing_time_ms: Date.now() - startTime
         };
 
+        console.log(`   ⚠️  FALLBACK RESULT:`);
+        console.log(`      📊 Confidence: ${(fallbackResult.confidence * 100).toFixed(1)}% (reduced due to failure)`);
+        console.log(`      📝 Answer: "${fallbackResult.reviewed_answer.substring(0, 150)}${fallbackResult.reviewed_answer.length > 150 ? '...' : ''}"`);
+        console.log(`      🔍 Status: ${fallbackResult.review_status}`);
+        console.log(`      💡 Recommendation: ${fallbackResult.recommendations[0]}`);
+
         reviewedResults.push(fallbackResult);
       }
     }
+
+    // Log summary of all reviews
+    console.log(`\n${'='.repeat(50)}`);
+    console.log(`📊 REVIEWER AGENT SUMMARY`);
+    console.log(`${'='.repeat(50)}`);
+    console.log(`📝 Total Questions Reviewed: ${reviewedResults.length}`);
+    
+    const statusCounts = reviewedResults.reduce((acc, result) => {
+      acc[result.review_status] = (acc[result.review_status] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    
+    console.log(`📊 Review Status Breakdown:`);
+    Object.entries(statusCounts).forEach(([status, count]) => {
+      const emoji = status === 'no_conflict' ? '✅' : status === 'resolved' ? '🔧' : '⚠️';
+      console.log(`   ${emoji} ${status}: ${count} question(s)`);
+    });
+    
+    const totalConflicts = reviewedResults.reduce((sum, result) => sum + result.review_analysis.detected_conflicts.length, 0);
+    console.log(`⚠️  Total Conflicts Detected: ${totalConflicts}`);
+    
+    const avgConfidence = reviewedResults.reduce((sum, result) => sum + result.confidence, 0) / reviewedResults.length;
+    console.log(`📊 Average Final Confidence: ${(avgConfidence * 100).toFixed(1)}%`);
+    
+    const totalProcessingTime = reviewedResults.reduce((sum, result) => sum + result.processing_time_ms, 0);
+    console.log(`⏱️  Total Processing Time: ${totalProcessingTime}ms`);
 
     return reviewedResults;
   }
 
   /**
    * Prepare input data for review analysis
+   * Now receives raw individual results for proper conflict detection
    */
   private prepareReviewAnalysisInput(result: ResearchResult, question: ValidationQuestion): any {
     const input: any = {
       question: question.q,
       question_type: question.type,
       risk_flags: question.risk_flags,
-      original_result: {
+      // Include the current "best" result as a fallback
+      current_result: {
         answer: result.answer,
         confidence: result.confidence,
         source: result.source,
@@ -237,19 +334,20 @@ Perform comprehensive review and provide a unified answer.
       }
     };
 
-    // Add Firecrawl data if available
+    // Add individual Firecrawl result if available
     if (result.firecrawl_data) {
-      input.firecrawl_data = {
-        answer: 'Firecrawl extraction result', // Firecrawl data doesn't contain direct content
+      input.firecrawl_result = {
+        answer: result.answer, // Use the main answer from Firecrawl
         confidence: result.firecrawl_data.confidence,
         structured_data: result.firecrawl_data.structured_data,
-        urls_processed: result.firecrawl_data.urls_processed
+        urls_processed: result.firecrawl_data.urls_processed,
+        content_length: result.firecrawl_data.content_length
       };
     }
 
-    // Add multi-model data if available
+    // Add individual multi-model results if available
     if (result.multi_model_data) {
-      input.multi_model_data = {
+      input.individual_model_results = {
         claude: {
           answer: result.multi_model_data.claude?.answer,
           confidence: result.multi_model_data.claude?.confidence,
@@ -264,14 +362,11 @@ Perform comprehensive review and provide a unified answer.
           answer: result.multi_model_data.deepseek?.answer,
           confidence: result.multi_model_data.deepseek?.confidence,
           reasoning: result.multi_model_data.deepseek?.reasoning
-        },
-        consensus: result.multi_model_data.consensus
+        }
       };
-    }
-
-    // Add enhanced analysis if available
-    if (result.enhanced_analysis) {
-      input.enhanced_analysis = result.enhanced_analysis;
+      
+      // Add consensus data
+      input.multi_model_consensus = result.multi_model_data.consensus;
     }
 
     return input;

@@ -1,6 +1,6 @@
 import { EvaluatorAgent, EvaluatorDecision } from '../agents/evaluator-agent';
-import { ResearchResult } from '../agents/research-agent';
 import { ValidationQuestion } from '../agents/planner-agent';
+import { ReviewerResult } from '../agents/reviewer-agent';
 
 export class EvaluatorAgentTestSuite {
   private evaluatorAgent: EvaluatorAgent;
@@ -41,84 +41,51 @@ export class EvaluatorAgentTestSuite {
   private async testHighConfidenceApproval(): Promise<void> {
     console.log('🔍 Test 1: High Confidence Approval');
     
-    const mockResearchResults: ResearchResult[] = [
+    const mockReviewerResults: ReviewerResult[] = [
       {
         question: 'Is CPT 99213 covered under Medicare HMO in California?',
-        answer: 'Yes, CPT 99213 is covered under Medicare Part B for established patient office visits with proper documentation.',
+        reviewed_answer: 'Yes, CPT 99213 is covered under Medicare Part B for established patient office visits with proper documentation.',
         confidence: 0.88,
-        source: 'Multi-Model Consensus',
-        metadata: {
-          extraction_method: 'multi-model',
-          processing_time: 25000,
-          escalation_reason: 'Low Firecrawl confidence'
+        review_status: 'no_conflict',
+        review_analysis: {
+          detected_conflicts: [],
+          resolution_strategy: 'Consensus from multiple sources',
+          confidence_adjustment: 0.0
         },
-        multi_model_data: {
-          claude: {
-            answer: 'Yes, CPT 99213 is covered under Medicare Part B for established patient office visits.',
-            confidence: 0.9,
-            reasoning: 'Medicare Part B covers established patient office visits with appropriate documentation.'
-          },
-          gpt5: {
-            answer: 'Yes, CPT 99213 is generally covered under Medicare HMO plans.',
-            confidence: 0.85,
-            reasoning: 'Medicare HMO plans typically cover established patient visits with proper authorization.'
-          },
-          deepseek: {
-            answer: 'Yes, CPT 99213 is covered under Medicare Advantage plans.',
-            confidence: 0.9,
-            reasoning: 'Medicare Advantage plans cover established patient office visits per CMS guidelines.'
-          },
-          individual_confidences: { claude: 0.9, gpt5: 0.85, deepseek: 0.9 },
-          consensus: { final_confidence: 0.88, agreement_level: 'high', conflicting_models: [] },
-          answer_previews: {
-            claude: 'Yes, CPT 99213 is covered under Medicare Part B...',
-            gpt5: 'Yes, CPT 99213 is generally covered under Medicare HMO...',
-            deepseek: 'Yes, CPT 99213 is covered under Medicare Advantage...'
-          }
+        source_analysis: {
+          firecrawl_contribution: 0.0,
+          claude_contribution: 0.3,
+          gpt5_contribution: 0.3,
+          deepseek_contribution: 0.4
         },
         recommendations: [
           '✅ High confidence - Policy appears well-documented',
           '🎯 Strong model consensus - High reliability expected',
           '🗺️ State-specific policy - Confirm state regulations'
-        ]
+        ],
+        processing_time_ms: 25000
       },
       {
         question: 'What are the documentation requirements for CPT 99213?',
-        answer: 'Documentation must include chief complaint, history of present illness, review of systems, and medical decision making.',
+        reviewed_answer: 'Documentation must include chief complaint, history of present illness, review of systems, and medical decision making.',
         confidence: 0.85,
-        source: 'Multi-Model Consensus',
-        metadata: {
-          extraction_method: 'multi-model',
-          processing_time: 22000
+        review_status: 'no_conflict',
+        review_analysis: {
+          detected_conflicts: [],
+          resolution_strategy: 'Consensus from multiple sources',
+          confidence_adjustment: 0.0
         },
-        multi_model_data: {
-          claude: {
-            answer: 'Documentation requirements include chief complaint, history of present illness, review of systems, and medical decision making.',
-            confidence: 0.85,
-            reasoning: 'CMS requires comprehensive documentation for established patient visits.'
-          },
-          gpt5: {
-            answer: 'Proper documentation must include HPI, ROS, and medical decision making.',
-            confidence: 0.8,
-            reasoning: 'Medicare requires detailed documentation for billing purposes.'
-          },
-          deepseek: {
-            answer: 'Documentation should cover CC, HPI, ROS, MDM for established patient visits.',
-            confidence: 0.9,
-            reasoning: 'Complete documentation ensures proper reimbursement and compliance.'
-          },
-          individual_confidences: { claude: 0.85, gpt5: 0.8, deepseek: 0.9 },
-          consensus: { final_confidence: 0.85, agreement_level: 'high', conflicting_models: [] },
-          answer_previews: {
-            claude: 'Documentation requirements include chief complaint...',
-            gpt5: 'Proper documentation must include HPI, ROS...',
-            deepseek: 'Documentation should cover CC, HPI, ROS, MDM...'
-          }
+        source_analysis: {
+          firecrawl_contribution: 0.0,
+          claude_contribution: 0.33,
+          gpt5_contribution: 0.33,
+          deepseek_contribution: 0.34
         },
         recommendations: [
           '✅ High confidence - Policy appears well-documented',
           '🎯 Strong model consensus - High reliability expected'
-        ]
+        ],
+        processing_time_ms: 22000
       }
     ];
 
@@ -151,7 +118,7 @@ export class EvaluatorAgentTestSuite {
       const startTime = Date.now();
       const result = await this.evaluatorAgent.evaluateClaim(
         'TEST-CLAIM-001',
-        mockResearchResults,
+        mockReviewerResults,
         mockQuestions,
         startTime
       );
@@ -177,21 +144,34 @@ export class EvaluatorAgentTestSuite {
   private async testLowConfidenceDenial(): Promise<void> {
     console.log('🔍 Test 2: Low Confidence Denial');
     
-    const mockResearchResults: ResearchResult[] = [
+    const mockReviewerResults: ReviewerResult[] = [
       {
         question: 'Is experimental treatment covered?',
-        answer: 'Unable to find specific policy information for this experimental treatment.',
+        reviewed_answer: 'Unable to find specific policy information for this experimental treatment.',
         confidence: 0.1,
-        source: 'Fallback',
-        metadata: {
-          extraction_method: 'firecrawl',
-          processing_time: 5000,
-          escalation_reason: 'Error in research process'
+        review_status: 'unresolvable',
+        review_analysis: {
+          detected_conflicts: [{
+            type: 'coverage',
+            description: 'No policy information found for experimental treatment',
+            conflicting_sources: ['Research Failure'],
+            severity: 'high',
+            resolution_suggestion: 'Manual review required'
+          }],
+          resolution_strategy: 'Fallback to manual review',
+          confidence_adjustment: -0.4
+        },
+        source_analysis: {
+          firecrawl_contribution: 0.0,
+          claude_contribution: 0.0,
+          gpt5_contribution: 0.0,
+          deepseek_contribution: 0.0
         },
         recommendations: [
           '❌ Research failed - Manual review required',
           '📞 Contact payer directly for policy clarification'
-        ]
+        ],
+        processing_time_ms: 5000
       }
     ];
 
@@ -213,7 +193,7 @@ export class EvaluatorAgentTestSuite {
       const startTime = Date.now();
       const result = await this.evaluatorAgent.evaluateClaim(
         'TEST-CLAIM-002',
-        mockResearchResults,
+        mockReviewerResults,
         mockQuestions,
         startTime
       );
@@ -238,82 +218,62 @@ export class EvaluatorAgentTestSuite {
   private async testMixedResultsReview(): Promise<void> {
     console.log('🔍 Test 3: Mixed Results Review Required');
     
-    const mockResearchResults: ResearchResult[] = [
+    const mockReviewerResults: ReviewerResult[] = [
       {
         question: 'Is CPT 99213 covered?',
-        answer: 'Yes, generally covered under Medicare Part B.',
+        reviewed_answer: 'Yes, generally covered under Medicare Part B.',
         confidence: 0.75,
-        source: 'Multi-Model Consensus',
-        metadata: {
-          extraction_method: 'multi-model',
-          processing_time: 20000
+        review_status: 'resolved',
+        review_analysis: {
+          detected_conflicts: [{
+            type: 'confidence',
+            description: 'Medium confidence from multiple sources',
+            conflicting_sources: ['Claude', 'GPT-5', 'DeepSeek'],
+            severity: 'medium',
+            resolution_suggestion: 'Additional verification recommended'
+          }],
+          resolution_strategy: 'Weighted consensus from multiple sources',
+          confidence_adjustment: -0.1
         },
-        multi_model_data: {
-          claude: {
-            answer: 'Generally covered under Medicare Part B for established patient visits.',
-            confidence: 0.7,
-            reasoning: 'Medicare Part B typically covers established patient visits with appropriate documentation.'
-          },
-          gpt5: {
-            answer: 'Yes, covered with proper documentation and medical necessity.',
-            confidence: 0.8,
-            reasoning: 'Medicare covers established patient visits when properly documented.'
-          },
-          deepseek: {
-            answer: 'Covered under Medicare Part B for established patient office visits.',
-            confidence: 0.75,
-            reasoning: 'Medicare Part B covers established patient visits per CMS guidelines.'
-          },
-          individual_confidences: { claude: 0.7, gpt5: 0.8, deepseek: 0.75 },
-          consensus: { final_confidence: 0.75, agreement_level: 'medium', conflicting_models: [] },
-          answer_previews: {
-            claude: 'Generally covered under Medicare Part B...',
-            gpt5: 'Yes, covered with proper documentation...',
-            deepseek: 'Covered under Medicare Part B...'
-          }
+        source_analysis: {
+          firecrawl_contribution: 0.0,
+          claude_contribution: 0.3,
+          gpt5_contribution: 0.4,
+          deepseek_contribution: 0.3
         },
         recommendations: [
           '🔍 Moderate confidence - Verify with additional sources',
           '🎯 Medium model consensus - Additional verification recommended'
-        ]
+        ],
+        processing_time_ms: 20000
       },
       {
         question: 'Prior authorization required?',
-        answer: 'Prior authorization may be required depending on specific circumstances.',
+        reviewed_answer: 'Prior authorization may be required depending on specific circumstances.',
         confidence: 0.65,
-        source: 'Multi-Model Consensus',
-        metadata: {
-          extraction_method: 'multi-model',
-          processing_time: 18000
+        review_status: 'resolved',
+        review_analysis: {
+          detected_conflicts: [{
+            type: 'requirements',
+            description: 'Uncertain prior authorization requirements',
+            conflicting_sources: ['Claude', 'GPT-5', 'DeepSeek'],
+            severity: 'medium',
+            resolution_suggestion: 'Verify PA requirements with payer'
+          }],
+          resolution_strategy: 'Consensus with uncertainty flag',
+          confidence_adjustment: -0.15
         },
-        multi_model_data: {
-          claude: {
-            answer: 'May require prior authorization depending on specific circumstances.',
-            confidence: 0.6,
-            reasoning: 'Prior authorization requirements vary by payer and specific circumstances.'
-          },
-          gpt5: {
-            answer: 'Prior auth typically required for certain procedures.',
-            confidence: 0.7,
-            reasoning: 'Many payers require prior authorization for specific services.'
-          },
-          deepseek: {
-            answer: 'Authorization may be needed based on payer policies.',
-            confidence: 0.65,
-            reasoning: 'Prior authorization depends on individual payer requirements.'
-          },
-          individual_confidences: { claude: 0.6, gpt5: 0.7, deepseek: 0.65 },
-          consensus: { final_confidence: 0.65, agreement_level: 'medium', conflicting_models: [] },
-          answer_previews: {
-            claude: 'May require prior authorization...',
-            gpt5: 'Prior auth typically required...',
-            deepseek: 'Authorization may be needed...'
-          }
+        source_analysis: {
+          firecrawl_contribution: 0.0,
+          claude_contribution: 0.3,
+          gpt5_contribution: 0.4,
+          deepseek_contribution: 0.3
         },
         recommendations: [
           '🔍 Moderate confidence - Verify with additional sources',
           '📋 Prior authorization flagged - Verify PA requirements with payer'
-        ]
+        ],
+        processing_time_ms: 18000
       }
     ];
 
@@ -346,7 +306,7 @@ export class EvaluatorAgentTestSuite {
       const startTime = Date.now();
       const result = await this.evaluatorAgent.evaluateClaim(
         'TEST-CLAIM-003',
-        mockResearchResults,
+        mockReviewerResults,
         mockQuestions,
         startTime
       );

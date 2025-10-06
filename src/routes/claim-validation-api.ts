@@ -23,17 +23,21 @@ router.post('/validate-claim', async (req, res) => {
   });
 
   try {
-    console.log('🚀 Starting claim validation via API');
-    console.log('📋 Payload:', JSON.stringify(payload, null, 2));
-
     // Generate claim ID and store payload immediately
     const claimId = crypto.randomUUID();
+    
+    console.log('\n' + '='.repeat(80));
+    console.log('🚀 STARTING CLAIM VALIDATION WORKFLOW');
+    console.log('='.repeat(80));
+    console.log('📋 Claim Payload:', JSON.stringify(payload, null, 2));
+    console.log('🆔 Generated Claim ID:', claimId);
     const claimStorageService = new ClaimStorageService();
     
     let claimValidationId: string;
     try {
       claimValidationId = await claimStorageService.storeClaimPayload(claimId, payload);
-      console.log('✅ Claim payload stored immediately with ID:', claimValidationId);
+      console.log('✅ Claim payload stored successfully');
+      console.log('🆔 Claim Validation ID:', claimValidationId);
     } catch (error) {
       console.error('❌ Failed to store claim payload:', error);
       throw error;
@@ -61,8 +65,13 @@ router.post('/validate-claim', async (req, res) => {
       result: result
     });
 
-    console.log('✅ Validation completed via API');
+    console.log('\n' + '='.repeat(80));
+    console.log('✅ CLAIM VALIDATION WORKFLOW COMPLETED');
+    console.log('='.repeat(80));
     console.log('📊 Final Status:', result.overall_status);
+    console.log('🎯 Confidence:', result.confidence);
+    console.log('⏱️  Total Processing Time:', result.processing_time_ms + 'ms');
+    console.log('='.repeat(80));
 
   } catch (error) {
     console.error('❌ Validation failed via API:', error);
@@ -90,6 +99,10 @@ async function executeValidationWithUpdates(
   const startTime = Date.now();
 
   try {
+    console.log('\n' + '-'.repeat(60));
+    console.log('🔍 STEP 1: SANITY CHECK');
+    console.log('-'.repeat(60));
+    
     // Step 1: Sanity Check
     sendSSE(res, {
       step: 'sanity',
@@ -105,6 +118,7 @@ async function executeValidationWithUpdates(
     );
 
     if (!sanityResult.output_data?.is_valid) {
+      console.log('❌ Sanity check FAILED - stopping workflow');
       sendSSE(res, {
         step: 'sanity',
         status: 'error',
@@ -114,6 +128,10 @@ async function executeValidationWithUpdates(
       throw new Error('Sanity check failed');
     }
 
+    console.log('✅ Sanity check PASSED');
+    console.log('🏥 Specialty:', sanityResult.output_data.ssp_prediction.specialty);
+    console.log('🔬 Subspecialty:', sanityResult.output_data.ssp_prediction.subspecialty);
+    
     sendSSE(res, {
       step: 'sanity',
       status: 'completed',
@@ -121,6 +139,10 @@ async function executeValidationWithUpdates(
       progress: 25
     });
 
+    console.log('\n' + '-'.repeat(60));
+    console.log('📋 STEP 2: PLANNER AGENT');
+    console.log('-'.repeat(60));
+    
     // Step 2: Planner
     sendSSE(res, {
       step: 'planner',
@@ -137,6 +159,7 @@ async function executeValidationWithUpdates(
     );
 
     if (plannerResult.status === 'failed') {
+      console.log('❌ Planner FAILED - stopping workflow');
       sendSSE(res, {
         step: 'planner',
         status: 'error',
@@ -147,6 +170,10 @@ async function executeValidationWithUpdates(
     }
 
     const questionCount = plannerResult.output_data?.questions?.length || 0;
+    console.log('✅ Planner COMPLETED');
+    console.log('📝 Generated Questions:', questionCount);
+    console.log('📋 Questions:', plannerResult.output_data?.questions?.map((q: any, i: number) => `${i + 1}. ${q.q}`).join('\n   '));
+    
     sendSSE(res, {
       step: 'planner',
       status: 'completed',
@@ -154,7 +181,12 @@ async function executeValidationWithUpdates(
       progress: 50
     });
 
-    // Step 3: Research (for each question)
+    console.log('\n' + '-'.repeat(60));
+    console.log('🔬 STEP 3: RESEARCH AGENT');
+    console.log('-'.repeat(60));
+    console.log('📊 Processing Questions:', questionCount);
+    
+    // Step 3: Research (using automated workflow step for proper database storage)
     sendSSE(res, {
       step: 'research',
       status: 'active',
@@ -162,41 +194,34 @@ async function executeValidationWithUpdates(
       progress: 60
     });
 
-    const researchResults = [];
-    const questions = plannerResult.output_data?.questions || [];
+    const researchStepResults = await workflow['executeResearchSteps'](
+      claimValidationId,
+      plannerResult.output_data.questions,
+      3
+    );
 
-    for (let i = 0; i < questions.length; i++) {
-      const question = questions[i];
-      
+    if (researchStepResults.some(result => result.status === 'failed')) {
+      console.log('❌ Research FAILED - stopping workflow');
       sendSSE(res, {
         step: 'research',
-        status: 'active',
-        message: `🔬 Researching question ${i + 1}/${questionCount}: ${question.q.substring(0, 50)}...`,
-        progress: 60 + (i * 20 / questions.length)
+        status: 'error',
+        message: '❌ Research failed - stopping workflow',
+        progress: 80
       });
-
-      try {
-        const researchResultsArray = await workflow['researchAgent'].executeResearch([question]);
-        const researchResult = researchResultsArray[0];
-        researchResults.push(researchResult);
-
-        sendSSE(res, {
-          step: 'research',
-          status: 'active',
-          message: `✅ Question ${i + 1} completed (${(researchResult.confidence * 100).toFixed(1)}% confidence)`,
-          progress: 60 + ((i + 1) * 20 / questions.length)
-        });
-
-      } catch (error) {
-        console.error(`Research failed for question ${i + 1}:`, error);
-        sendSSE(res, {
-          step: 'research',
-          status: 'error',
-          message: `❌ Research failed for question ${i + 1}`,
-          progress: 60 + ((i + 1) * 20 / questions.length)
-        });
-      }
+      throw new Error('Research failed');
     }
+
+    // Extract research results from step results
+    const researchResults = researchStepResults.map(step => step.output_data).filter(result => result);
+    
+    console.log('✅ Research COMPLETED');
+    console.log('📊 Results Summary:');
+    researchResults.forEach((result, index) => {
+      console.log(`   ${index + 1}. ${result.question.substring(0, 60)}...`);
+      console.log(`      🎯 Confidence: ${(result.confidence * 100).toFixed(1)}%`);
+      console.log(`      🔍 Method: ${result.metadata.extraction_method}`);
+      console.log(`      📝 Answer: ${result.answer.substring(0, 80)}...`);
+    });
 
     sendSSE(res, {
       step: 'research',
@@ -205,38 +230,56 @@ async function executeValidationWithUpdates(
       progress: 80
     });
 
-    // Step 4: Reviewer Agent
+    console.log('\n' + '-'.repeat(60));
+    console.log('🔍 STEP 4: REVIEWER AGENT');
+    console.log('-'.repeat(60));
+    
+    // Step 4: Reviewer Agent (using automated workflow step for proper database storage)
     sendSSE(res, {
       step: 'reviewer',
       status: 'active',
-      message: '🔍 Reviewing research results...',
+      message: '🔍 Reviewing research results for conflicts...',
       progress: 85
     });
 
-    const reviewerResult = await workflow['executeReviewerStep'](
+    const reviewerStepResult = await workflow['executeReviewerStep'](
       claimValidationId,
       researchResults,
-      questions,
+      plannerResult.output_data.questions,
       4
     );
 
-    if (reviewerResult.status === 'failed') {
+    if (reviewerStepResult.status === 'failed') {
+      console.log('❌ Reviewer FAILED - stopping workflow');
       sendSSE(res, {
         step: 'reviewer',
         status: 'error',
-        message: '❌ Review failed',
+        message: '❌ Reviewer failed - stopping workflow',
         progress: 90
       });
-      throw new Error('Review failed');
+      throw new Error('Reviewer failed');
     }
+
+    console.log('✅ Reviewer COMPLETED');
+    console.log('📊 Review Summary:');
+    reviewerStepResult.output_data.forEach((result: any, index: number) => {
+      console.log(`   ${index + 1}. ${result.question.substring(0, 60)}...`);
+      console.log(`      🎯 Final Confidence: ${(result.confidence * 100).toFixed(1)}%`);
+      console.log(`      🔍 Review Status: ${result.review_status}`);
+      console.log(`      ⚠️  Conflicts Detected: ${result.review_analysis.detected_conflicts.length}`);
+    });
 
     sendSSE(res, {
       step: 'reviewer',
       status: 'completed',
-      message: '✅ Review completed',
+      message: `✅ Review completed - ${reviewerStepResult.output_data.length} questions analyzed`,
       progress: 90
     });
 
+    console.log('\n' + '-'.repeat(60));
+    console.log('🎯 STEP 5: EVALUATOR AGENT');
+    console.log('-'.repeat(60));
+    
     // Step 5: Evaluator
     sendSSE(res, {
       step: 'evaluator',
@@ -247,32 +290,44 @@ async function executeValidationWithUpdates(
 
     const evaluatorResult = await workflow['executeEvaluatorStep'](
       claimValidationId,
-      reviewerResult.output_data,
-      questions,
+      reviewerStepResult.output_data,
+      plannerResult.output_data.questions,
       5
     );
 
     if (evaluatorResult.status === 'failed') {
+      console.log('❌ Evaluator FAILED - stopping workflow');
       sendSSE(res, {
         step: 'evaluator',
         status: 'error',
         message: '❌ Evaluator failed',
-        progress: 90
+        progress: 100
       });
       throw new Error('Evaluator failed');
     }
+
+    console.log('✅ Evaluator COMPLETED');
+    console.log('📊 Final Decision:', evaluatorResult.output_data.overall_status);
+    console.log('🎯 Confidence Level:', evaluatorResult.output_data.confidence);
+    console.log('⏱️  Processing Time:', evaluatorResult.output_data.processing_time_ms + 'ms');
 
     sendSSE(res, {
       step: 'evaluator',
       status: 'completed',
       message: `✅ Final decision: ${evaluatorResult.output_data.overall_status}`,
-      progress: 95
+      progress: 100
     });
 
     return evaluatorResult.output_data;
 
   } catch (error) {
     console.error('Validation workflow error:', error);
+    sendSSE(res, {
+      step: 'error',
+      status: 'error',
+      message: `❌ Validation failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      progress: 100
+    });
     throw error;
   }
 }

@@ -2,6 +2,7 @@ import { BaseAgent } from './base-agent';
 import { ResearchResult } from './research-agent';
 import { ValidationQuestion } from './planner-agent';
 import { ClaimPayload } from '../types/claim-types';
+import { ReviewerResult } from './reviewer-agent';
 
 export interface EvaluatorDecision {
   claim_id: string;
@@ -61,6 +62,14 @@ export class EvaluatorAgent extends BaseAgent {
     const instructions = `
 You are the Evaluator Agent - the final decision maker in the medical claim validation process.
 
+CRITICAL JSON REQUIREMENTS:
+1. Respond with ONLY valid JSON - no markdown, no explanations, no additional text
+2. Use double quotes for all strings
+3. Ensure all arrays and objects are properly closed
+4. No trailing commas
+5. Escape any special characters in strings
+6. Keep strings under 200 characters to avoid parsing issues
+
 INPUT
 - Research results from Research Agent containing consolidated Firecrawl + Multi-Model analysis
 - Each question includes: answer, confidence, method, recommendations, and structured data
@@ -105,7 +114,7 @@ OUTPUT FORMAT (JSON only):
       "status": "PASS|FAIL|REVIEW_REQUIRED",
       "risk_level": "low|medium|high",
       "recommendations": ["string"],
-      "escalation_reason": "string (if applicable)"
+      "escalation_reason": "string"
     }
   ],
   "overall_assessment": {
@@ -145,11 +154,11 @@ EVALUATION CRITERIA:
   }
 
   /**
-   * Evaluate research results and make final claim decision
+   * Evaluate reviewer results and make final claim decision
    */
   async evaluateClaim(
     claimId: string,
-    researchResults: ResearchResult[],
+    reviewerResults: ReviewerResult[],
     questions: ValidationQuestion[],
     startTime: number
   ): Promise<EvaluatorDecision> {
@@ -158,18 +167,18 @@ EVALUATION CRITERIA:
     }
 
     // Prepare consolidated input for evaluation
-    const evaluationInput = this.prepareEvaluationInput(researchResults, questions);
+    const evaluationInput = this.prepareEvaluationInput(reviewerResults, questions);
 
     const input = `
-Evaluate this medical claim based on research results:
+Evaluate this medical claim based on reviewer results:
 
 CLAIM ID: ${claimId}
 
-RESEARCH RESULTS:
+REVIEWER RESULTS:
 ${JSON.stringify(evaluationInput, null, 2)}
 
 Make a final decision on claim approval, denial, or review requirement.
-Consider all confidence levels, recommendations, and risk factors.
+Consider all confidence levels, conflict analysis, and reviewer recommendations.
 `;
 
     try {
@@ -240,59 +249,60 @@ Consider all confidence levels, recommendations, and risk factors.
    * Prepare consolidated input for evaluation
    */
   private prepareEvaluationInput(
-    researchResults: ResearchResult[], 
+    reviewerResults: ReviewerResult[], 
     questions: ValidationQuestion[]
   ): any {
     return {
       questions_count: questions.length,
-      research_summary: {
-        total_questions: researchResults.length,
-        firecrawl_success: researchResults.filter(r => r.metadata.extraction_method === 'firecrawl').length,
-        multi_model_escalations: researchResults.filter(r => r.metadata.extraction_method === 'multi-model').length,
-        average_confidence: researchResults.reduce((sum, r) => sum + r.confidence, 0) / researchResults.length
+      reviewer_summary: {
+        total_questions: reviewerResults.length,
+        average_confidence: Math.round((reviewerResults.reduce((sum, r) => sum + r.confidence, 0) / reviewerResults.length) * 100) / 100,
+        no_conflict_count: reviewerResults.filter(r => r.review_status === 'no_conflict').length,
+        resolved_count: reviewerResults.filter(r => r.review_status === 'resolved').length,
+        unresolvable_count: reviewerResults.filter(r => r.review_status === 'unresolvable').length,
+        total_conflicts: reviewerResults.reduce((sum, r) => sum + r.review_analysis.detected_conflicts.length, 0)
       },
-      detailed_results: researchResults.map((result, index) => ({
+      // Reviewer-specific results with conflict analysis
+      question_summaries: reviewerResults.map((result, index) => ({
         question_id: `Q${index + 1}`,
-        question: result.question,
-        answer: result.answer,
-        confidence: result.confidence,
-        method: result.metadata.extraction_method,
-        processing_time: result.metadata.processing_time,
-        escalation_reason: result.metadata.escalation_reason,
-        recommendations: result.recommendations,
-        question_type: questions[index]?.type || 'unknown',
-        risk_flags: questions[index]?.risk_flags || {},
-        // Include only essential data from multi-model analysis
-        consensus_level: result.multi_model_data?.consensus?.agreement_level || 'unknown',
-        conflicting_models: result.multi_model_data?.consensus?.conflicting_models || []
-      })),
-      risk_analysis: {
-        high_risk_questions: researchResults.filter(r => r.confidence < 0.6).length,
-        medium_risk_questions: researchResults.filter(r => r.confidence >= 0.6 && r.confidence < 0.8).length,
-        low_risk_questions: researchResults.filter(r => r.confidence >= 0.8).length,
-        total_recommendations: researchResults.reduce((sum, r) => sum + r.recommendations.length, 0)
-      }
+        question: result.question.substring(0, 100) + (result.question.length > 100 ? '...' : ''),
+        reviewed_answer: result.reviewed_answer.substring(0, 150) + (result.reviewed_answer.length > 150 ? '...' : ''),
+        confidence: Math.round(result.confidence * 100) / 100,
+        review_status: result.review_status,
+        conflicts_detected: result.review_analysis.detected_conflicts.length,
+        resolution_strategy: result.review_analysis.resolution_strategy,
+        source_contributions: result.source_analysis,
+        recommendations: result.recommendations
+      }))
     };
   }
 
   /**
-   * Calculate approval probability based on research results
+   * Calculate approval probability based on reviewer results
    */
-  private calculateApprovalProbability(researchResults: ResearchResult[]): number {
-    if (researchResults.length === 0) return 0;
+  private calculateApprovalProbability(reviewerResults: ReviewerResult[]): number {
+    if (reviewerResults.length === 0) return 0;
 
-    const avgConfidence = researchResults.reduce((sum, r) => sum + r.confidence, 0) / researchResults.length;
-    const highConfidenceCount = researchResults.filter(r => r.confidence >= 0.8).length;
-    const lowConfidenceCount = researchResults.filter(r => r.confidence < 0.6).length;
+    const avgConfidence = reviewerResults.reduce((sum, r) => sum + r.confidence, 0) / reviewerResults.length;
+    const noConflictCount = reviewerResults.filter(r => r.review_status === 'no_conflict').length;
+    const resolvedCount = reviewerResults.filter(r => r.review_status === 'resolved').length;
+    const unresolvableCount = reviewerResults.filter(r => r.review_status === 'unresolvable').length;
+    const totalConflicts = reviewerResults.reduce((sum, r) => sum + r.review_analysis.detected_conflicts.length, 0);
     
     // Base probability from average confidence
     let probability = avgConfidence * 100;
     
-    // Adjust based on high confidence questions
-    probability += (highConfidenceCount / researchResults.length) * 20;
+    // Boost for no conflicts
+    probability += (noConflictCount / reviewerResults.length) * 30;
     
-    // Penalize low confidence questions
-    probability -= (lowConfidenceCount / researchResults.length) * 30;
+    // Boost for resolved conflicts
+    probability += (resolvedCount / reviewerResults.length) * 20;
+    
+    // Penalty for unresolvable conflicts
+    probability -= (unresolvableCount / reviewerResults.length) * 40;
+    
+    // Penalty for total conflicts
+    probability -= (totalConflicts / reviewerResults.length) * 10;
     
     return Math.max(0, Math.min(100, Math.round(probability)));
   }
@@ -300,12 +310,24 @@ Consider all confidence levels, recommendations, and risk factors.
   /**
    * Determine overall risk level
    */
-  private determineRiskLevel(researchResults: ResearchResult[]): 'low' | 'medium' | 'high' {
-    const avgConfidence = researchResults.reduce((sum, r) => sum + r.confidence, 0) / researchResults.length;
-    const lowConfidenceCount = researchResults.filter(r => r.confidence < 0.6).length;
-    
-    if (avgConfidence >= 0.8 && lowConfidenceCount === 0) return 'low';
-    if (avgConfidence >= 0.6 && lowConfidenceCount <= researchResults.length * 0.3) return 'medium';
-    return 'high';
+  private determineRiskLevel(reviewerResults: ReviewerResult[]): 'low' | 'medium' | 'high' {
+    if (reviewerResults.length === 0) return 'high';
+
+    const unresolvableCount = reviewerResults.filter(r => r.review_status === 'unresolvable').length;
+    const totalConflicts = reviewerResults.reduce((sum, r) => sum + r.review_analysis.detected_conflicts.length, 0);
+    const avgConfidence = reviewerResults.reduce((sum, r) => sum + r.confidence, 0) / reviewerResults.length;
+
+    // High risk if many unresolvable conflicts or low confidence
+    if (unresolvableCount > reviewerResults.length * 0.3 || avgConfidence < 0.6) {
+      return 'high';
+    }
+
+    // Medium risk if some conflicts or moderate confidence
+    if (totalConflicts > 0 || avgConfidence < 0.8) {
+      return 'medium';
+    }
+
+    // Low risk if no conflicts and high confidence
+    return 'low';
   }
 }

@@ -119,27 +119,44 @@ export class ResearchAgent {
   }
 
   /**
-   * Main research method implementing cascading validation strategy
+   * Main research method - returns raw individual results for Reviewer Agent
    */
   async executeResearch(questions: ValidationQuestion[]): Promise<ResearchResult[]> {
-    console.log(`🔍 Research Agent: Processing ${questions.length} questions with parallel strategy`);
+    console.log(`\n🔬 RESEARCH AGENT: Starting research for ${questions.length} question(s)`);
+    console.log('📊 Strategy: Parallel Firecrawl + Multi-Model analysis');
     
     const results: ResearchResult[] = [];
     let firecrawlSuccessCount = 0;
     let multiModelSuccessCount = 0;
     const startTime = Date.now();
 
-    for (const question of questions) {
+    for (let i = 0; i < questions.length; i++) {
+      const question = questions[i];
+      
+      console.log(`\n${'='.repeat(50)}`);
+      console.log(`🔍 QUESTION ${i + 1}/${questions.length}`);
+      console.log(`${'='.repeat(50)}`);
+      console.log(`📝 Question: ${question.q}`);
+      console.log(`🏷️  Type: ${question.type}`);
+      console.log(`⚠️  Risk Flags: ${Object.entries(question.risk_flags).filter(([k,v]) => v).map(([k,v]) => k).join(', ') || 'None'}`);
+      
       try {
         // Always run Google search first to get URLs
-        console.log(`🚀 Running parallel research for: ${question.q.substring(0, 50)}...`);
+        console.log(`\n🔍 STEP 1: Google Search`);
+        console.log(`   📋 Search Queries: ${question.search_queries.join(', ')}`);
         
         const searchResults = await this.googleSearch.executeSearches([question]);
         const hasUrls = searchResults.firecrawl_inputs.length > 0;
         
-        console.log(`   🔍 Google search results: ${searchResults.firecrawl_inputs.length} URLs found`);
+        console.log(`   ✅ URLs Found: ${searchResults.firecrawl_inputs.length}`);
+        if (hasUrls) {
+          searchResults.firecrawl_inputs[0].urls.forEach((url, idx) => {
+            console.log(`      ${idx + 1}. ${url}`);
+          });
+        }
         
         // Run all methods in parallel
+        console.log(`\n🚀 STEP 2: Parallel Analysis`);
         const promises: Promise<any>[] = [
           this.executeMultiModelAnalysis([question])
         ];
@@ -155,28 +172,27 @@ export class ResearchAgent {
         const multiModelResult = results_array[0];
         const firecrawlResult = hasUrls ? results_array[1] : [];
 
-        // Compare results and select the best one
-        const bestResult = this.selectBestResult(firecrawlResult, multiModelResult, question, startTime);
+        // Combine raw results - let Reviewer Agent handle conflict detection
+        const combinedResult = this.combineRawResults(firecrawlResult, multiModelResult, question, startTime);
         
-        if (bestResult) {
-          results.push(bestResult);
+        if (combinedResult) {
+          results.push(combinedResult);
           
-          // Count based on which sources contributed to the consensus
-          const enhancedAnalysis = bestResult.enhanced_analysis;
-          if (enhancedAnalysis?.individual_results.firecrawl) {
+          // Count successes for logging
+          if (combinedResult.firecrawl_data) {
             firecrawlSuccessCount++;
           }
-          if (enhancedAnalysis?.individual_results.claude || enhancedAnalysis?.individual_results.gpt || enhancedAnalysis?.individual_results.deepseek) {
+          if (combinedResult.multi_model_data) {
             multiModelSuccessCount++;
           }
           
-          console.log(`✅ Consensus result for: ${question.q.substring(0, 50)}...`);
-          console.log(`   📊 Sources: ${bestResult.source}`);
-          console.log(`   🎯 Confidence: ${(bestResult.confidence * 100).toFixed(1)}%`);
-          console.log(`   📝 Answer preview: ${bestResult.answer.substring(0, 100)}...`);
+          console.log(`\n✅ QUESTION ${i + 1} COMPLETED`);
+          console.log(`   📊 Sources: ${combinedResult.source}`);
+          console.log(`   🎯 Confidence: ${(combinedResult.confidence * 100).toFixed(1)}%`);
+          console.log(`   📝 Answer Preview: ${combinedResult.answer.substring(0, 100)}...`);
         } else {
           // Fallback: create a basic result
-          console.log(`⚠️  No results available for: ${question.q.substring(0, 50)}...`);
+          console.log(`\n⚠️  QUESTION ${i + 1} - NO RESULTS`);
           results.push({
             question: question.q,
             answer: 'Unable to find relevant information for this question.',
@@ -191,7 +207,7 @@ export class ResearchAgent {
           });
         }
       } catch (error) {
-        console.error(`❌ Research failed for question: ${question.q}`, error);
+        console.error(`\n❌ QUESTION ${i + 1} FAILED:`, error);
         // Fallback to basic answer
         results.push({
           question: question.q,
@@ -208,8 +224,15 @@ export class ResearchAgent {
       }
     }
 
-    console.log(`📊 Research complete: ${firecrawlSuccessCount} Firecrawl, ${multiModelSuccessCount} Multi-Model`);
-    console.log(`📈 Success rate: ${((firecrawlSuccessCount + multiModelSuccessCount) / questions.length * 100).toFixed(1)}%`);
+    console.log(`\n${'='.repeat(50)}`);
+    console.log(`📊 RESEARCH AGENT SUMMARY`);
+    console.log(`${'='.repeat(50)}`);
+    console.log(`📝 Total Questions: ${questions.length}`);
+    console.log(`🔥 Firecrawl Successes: ${firecrawlSuccessCount}`);
+    console.log(`🤖 Multi-Model Successes: ${multiModelSuccessCount}`);
+    console.log(`📈 Success Rate: ${((firecrawlSuccessCount + multiModelSuccessCount) / questions.length * 100).toFixed(1)}%`);
+    console.log(`⏱️  Total Processing Time: ${Date.now() - startTime}ms`);
+    
     return results;
   }
 
@@ -503,9 +526,10 @@ export class ResearchAgent {
   }
 
   /**
-   * Analyze all 4 results for conflicts and consensus
+   * Combine raw results from Firecrawl and Multi-Model analysis
+   * Let Reviewer Agent handle conflict detection and resolution
    */
-  analyzeAllResults(firecrawlResult: ResearchResult[], multiModelResult: any[], question: ValidationQuestion, startTime: number): EnhancedResearchResult | null {
+  combineRawResults(firecrawlResult: ResearchResult[], multiModelResult: any[], question: ValidationQuestion, startTime: number): ResearchResult | null {
     const firecrawl = firecrawlResult.length > 0 ? firecrawlResult[0] : null;
     const multiModel = multiModelResult.length > 0 ? multiModelResult[0] : null;
 
@@ -515,196 +539,88 @@ export class ResearchAgent {
       return null;
     }
 
-    // Build individual results array
-    const individualResults: IndividualResearchResult[] = [];
-    
-    if (firecrawl) {
-      individualResults.push({
-        source: 'Firecrawl',
-        answer: firecrawl.answer,
-        confidence: firecrawl.confidence,
-        policy_reference: firecrawl.metadata?.structured_data?.policy_reference,
-        metadata: firecrawl.metadata
-      });
-    }
+    // Simple combination - just use the highest confidence result
+    // Let Reviewer Agent handle all conflict detection and resolution
+    let bestResult: ResearchResult;
+    let source: string;
 
-    if (multiModel) {
-      // Add individual model results
-      if (multiModel.multi_model_data?.claude) {
-        individualResults.push({
-          source: 'Claude-3.5',
-          answer: multiModel.multi_model_data.claude.answer,
-          confidence: multiModel.multi_model_data.claude.confidence,
-          metadata: multiModel.multi_model_data.claude
-        });
-      }
-      if (multiModel.multi_model_data?.gpt5) {
-        individualResults.push({
-          source: 'GPT-4',
-          answer: multiModel.multi_model_data.gpt5.answer,
-          confidence: multiModel.multi_model_data.gpt5.confidence,
-          metadata: multiModel.multi_model_data.gpt5
-        });
-      }
-      if (multiModel.multi_model_data?.deepseek) {
-        individualResults.push({
-          source: 'DeepSeek-V3',
-          answer: multiModel.multi_model_data.deepseek.answer,
-          confidence: multiModel.multi_model_data.deepseek.confidence,
-          metadata: multiModel.multi_model_data.deepseek
-        });
-      }
-    }
-
-    // Detect conflicts
-    const conflicts = this.detectConflicts(individualResults);
-    
-    // Calculate consensus level
-    const consensusLevel = this.calculateConsensusLevel(individualResults);
-    
-    // Determine final answer and confidence
-    let finalAnswer: string;
-    let confidence: number;
-    let recommendations: string[] = [];
-
-    if (conflicts.length > 0) {
-      console.log(`   ⚠️  Conflicts detected: ${conflicts.length} conflict(s)`);
-      finalAnswer = 'CONFLICTING_INFORMATION_DETECTED';
-      confidence = 0.3;
-      recommendations = [
-        '⚠️ CONFLICT: Multiple sources provide different information',
-        '📞 Contact payer directly for clarification',
-        '📄 Review policy documents manually'
-      ];
-      conflicts.forEach(conflict => {
-        recommendations.push(`🔍 ${conflict.type}: ${conflict.description}`);
-      });
-    } else {
-      // Use consensus or highest confidence result
-      if (individualResults.length === 0) {
-        finalAnswer = 'No research results available';
-        confidence = 0.1;
-        recommendations = ['❌ No results from any research method - Manual review required'];
+    if (firecrawl && multiModel) {
+      // Both available - use the one with higher confidence
+      if (firecrawl.confidence >= multiModel.consensus?.confidence || 0) {
+        bestResult = firecrawl;
+        source = 'Firecrawl (Higher Confidence)';
       } else {
-        const avgConfidence = individualResults.reduce((sum, r) => sum + r.confidence, 0) / individualResults.length;
-        const highestConfidenceResult = individualResults.reduce((best, current) => 
-          current.confidence > best.confidence ? current : best
-        );
-        
-        finalAnswer = highestConfidenceResult.answer;
-        confidence = avgConfidence;
-        
-        // Generate recommendations based on consensus
-        if (consensusLevel === '4/4_AGREE') {
-          recommendations = ['✅ Strong consensus - All sources agree', '📊 High confidence result'];
-        } else if (consensusLevel === '3/4_AGREE') {
-          recommendations = ['✅ Good consensus - Majority agreement', '📊 Medium-high confidence result'];
-        } else if (consensusLevel === '2/4_AGREE') {
-          recommendations = ['⚠️ Partial consensus - Some disagreement', '📊 Medium confidence result'];
-        } else {
-          recommendations = ['⚠️ Low consensus - Significant disagreement', '📊 Low confidence result'];
-        }
-
-        // Add policy reference if available
-        if (firecrawl?.metadata?.structured_data?.policy_reference) {
-          const ref = firecrawl.metadata.structured_data.policy_reference;
-          recommendations.push(`📄 Policy Reference: ${ref.url}`);
-          if (ref.sentence) {
-            recommendations.push(`📝 Specific sentence: "${ref.sentence}"`);
-          }
-        }
+        // Convert multi-model to ResearchResult format
+        bestResult = {
+          question: question.q,
+          answer: multiModel.consensus?.final_answer || 'No consensus answer available',
+          confidence: multiModel.consensus?.confidence || 0.5,
+          source: 'Multi-Model Consensus',
+          metadata: {
+            extraction_method: 'multi-model',
+            processing_time: Date.now() - startTime,
+            escalation_reason: 'Multi-model consensus used'
+          },
+          multi_model_data: multiModel.multi_model_data,
+          recommendations: multiModel.recommendations || []
+        };
+        source = 'Multi-Model (Higher Confidence)';
       }
+    } else if (firecrawl) {
+      bestResult = firecrawl;
+      source = 'Firecrawl Only';
+    } else {
+      // Convert multi-model to ResearchResult format
+      bestResult = {
+        question: question.q,
+        answer: multiModel.consensus?.final_answer || 'No consensus answer available',
+        confidence: multiModel.consensus?.confidence || 0.5,
+        source: 'Multi-Model Only',
+        metadata: {
+          extraction_method: 'multi-model',
+          processing_time: Date.now() - startTime,
+          escalation_reason: 'Multi-model only available'
+        },
+        multi_model_data: multiModel.multi_model_data,
+        recommendations: multiModel.recommendations || []
+      };
+      source = 'Multi-Model Only';
     }
 
-    console.log(`   📊 Analysis complete: ${consensusLevel}, ${conflicts.length} conflicts, ${confidence.toFixed(2)} confidence`);
-    
-    // Log individual source contributions
-    console.log(`   🔍 Source Analysis:`);
-    if (individualResults.find(r => r.source === 'Firecrawl')) {
-      const firecrawl = individualResults.find(r => r.source === 'Firecrawl')!;
-      console.log(`      🔥 Firecrawl: ${(firecrawl.confidence * 100).toFixed(1)}% - "${firecrawl.answer.substring(0, 100)}${firecrawl.answer.length > 100 ? '...' : ''}"`);
-    }
-    if (individualResults.find(r => r.source === 'Claude-3.5')) {
-      const claude = individualResults.find(r => r.source === 'Claude-3.5')!;
-      console.log(`      🧠 Claude: ${(claude.confidence * 100).toFixed(1)}% - "${claude.answer.substring(0, 100)}${claude.answer.length > 100 ? '...' : ''}"`);
-    }
-    if (individualResults.find(r => r.source === 'GPT-4')) {
-      const gpt = individualResults.find(r => r.source === 'GPT-4')!;
-      console.log(`      🤖 GPT-4: ${(gpt.confidence * 100).toFixed(1)}% - "${gpt.answer.substring(0, 100)}${gpt.answer.length > 100 ? '...' : ''}"`);
-    }
-    if (individualResults.find(r => r.source === 'DeepSeek-V3')) {
-      const deepseek = individualResults.find(r => r.source === 'DeepSeek-V3')!;
-      console.log(`      🎯 DeepSeek: ${(deepseek.confidence * 100).toFixed(1)}% - "${deepseek.answer.substring(0, 100)}${deepseek.answer.length > 100 ? '...' : ''}"`);
-    }
-    
-    // Log conflicts if any
-    if (conflicts.length > 0) {
-      console.log(`   ⚠️  Conflicts detected:`);
-      conflicts.forEach((conflict, index) => {
-        console.log(`      ${index + 1}. ${conflict.type}: ${conflict.description}`);
-        console.log(`         Sources: ${conflict.conflicting_sources.join(', ')}`);
-      });
-    }
-    
-    // Log recommendations
-    console.log(`   💡 Recommendations:`);
-    recommendations.forEach((rec, index) => {
-      console.log(`      ${index + 1}. ${rec}`);
-    });
-
-    return {
-      question: question.q,
-      final_answer: finalAnswer,
-      confidence,
-      consensus_level: consensusLevel,
-      conflicts,
-      individual_results: {
-        firecrawl: individualResults.find(r => r.source === 'Firecrawl'),
-        claude: individualResults.find(r => r.source === 'Claude-3.5'),
-        gpt: individualResults.find(r => r.source === 'GPT-4'),
-        deepseek: individualResults.find(r => r.source === 'DeepSeek-V3')
-      },
-      recommendations,
+    // Add both firecrawl and multi-model data for Reviewer Agent
+    const combinedResult: ResearchResult = {
+      ...bestResult,
+      source: source,
+      // Include both datasets for Reviewer Agent analysis
+      firecrawl_data: firecrawl ? {
+        confidence: firecrawl.confidence,
+        content_length: firecrawl.answer.length,
+        structured_data: firecrawl.metadata?.structured_data,
+        urls_processed: firecrawl.firecrawl_data?.urls_processed || []
+      } : undefined,
+      multi_model_data: multiModel?.multi_model_data,
       metadata: {
-        extraction_method: 'conflict-analysis',
-        processing_time: Date.now() - startTime,
-        escalation_reason: conflicts.length > 0 ? 'Conflicts detected' : 'Consensus analysis complete'
+        ...bestResult.metadata,
+        extraction_method: 'multi-model',
+        escalation_reason: 'Raw results combined for Reviewer Agent analysis'
       }
     };
+
+    console.log(`   📊 Raw Results Combined:`);
+    console.log(`      🔥 Firecrawl: ${firecrawl ? `${(firecrawl.confidence * 100).toFixed(1)}%` : 'Not available'}`);
+    console.log(`      🤖 Multi-Model: ${multiModel ? `${((multiModel.consensus?.confidence || 0) * 100).toFixed(1)}%` : 'Not available'}`);
+    console.log(`      🎯 Selected: ${source} (${(combinedResult.confidence * 100).toFixed(1)}%)`);
+    console.log(`      📝 Answer preview: "${combinedResult.answer.substring(0, 100)}${combinedResult.answer.length > 100 ? '...' : ''}"`);
+
+    return combinedResult;
   }
 
   /**
-   * Select the best result from Firecrawl and Multi-Model analysis (legacy method)
+   * Select the best result from Firecrawl and Multi-Model analysis
+   * Simplified approach - let Reviewer Agent handle conflict detection
    */
   selectBestResult(firecrawlResult: ResearchResult[], multiModelResult: any[], question: ValidationQuestion, startTime: number): ResearchResult | null {
-    const enhancedResult = this.analyzeAllResults(firecrawlResult, multiModelResult, question, startTime);
-    
-    if (!enhancedResult) return null;
-
-    // Convert enhanced result back to legacy format for backward compatibility
-    // The source should reflect the consensus approach, not individual sources
-    const sourceCount = [
-      enhancedResult.individual_results.firecrawl,
-      enhancedResult.individual_results.claude,
-      enhancedResult.individual_results.gpt,
-      enhancedResult.individual_results.deepseek
-    ].filter(Boolean).length;
-    
-    const source = `${sourceCount}/4 Consensus Analysis`;
-
-    return {
-      question: enhancedResult.question,
-      answer: enhancedResult.final_answer,
-      confidence: enhancedResult.confidence,
-      source: source,
-      metadata: {
-        extraction_method: 'enhanced-analysis',
-        processing_time: enhancedResult.metadata.processing_time,
-        escalation_reason: enhancedResult.metadata.escalation_reason
-      },
-      recommendations: enhancedResult.recommendations,
-      enhanced_analysis: enhancedResult // Include full analysis for debugging
-    };
+    return this.combineRawResults(firecrawlResult, multiModelResult, question, startTime);
   }
 
   /**
@@ -806,133 +722,7 @@ export class ResearchAgent {
     return Math.min(confidence, 1.0);
   }
 
-  /**
-   * Detect conflicts between research results
-   */
-  private detectConflicts(results: IndividualResearchResult[]): ConflictInfo[] {
-    const conflicts: ConflictInfo[] = [];
-    
-    // Coverage conflicts
-    const coverageAnswers = results.map(r => this.extractCoverageAnswer(r.answer));
-    const coverageGroups = this.groupByCoverage(coverageAnswers);
-    if (coverageGroups.length > 1) {
-      conflicts.push({
-        type: 'COVERAGE_CONFLICT',
-        description: 'Different coverage determinations found',
-        conflicting_sources: coverageGroups.map(g => g.sources.join(', ')),
-        conflicting_answers: coverageGroups.reduce((acc, group) => {
-          group.sources.forEach(source => {
-            acc[source] = group.answer;
-          });
-          return acc;
-        }, {} as { [source: string]: string })
-      });
-    }
-    
-    // Requirement conflicts
-    const requirementAnswers = results.map(r => this.extractRequirements(r.answer));
-    const requirementGroups = this.groupByRequirements(requirementAnswers);
-    if (requirementGroups.length > 1) {
-      conflicts.push({
-        type: 'REQUIREMENT_CONFLICT',
-        description: 'Different eligibility requirements found',
-        conflicting_sources: requirementGroups.map(g => g.sources.join(', ')),
-        conflicting_answers: requirementGroups.reduce((acc, group) => {
-          group.sources.forEach(source => {
-            acc[source] = group.answer;
-          });
-          return acc;
-        }, {} as { [source: string]: string })
-      });
-    }
-    
-    return conflicts;
-  }
-
-  /**
-   * Extract coverage determination from answer
-   */
-  private extractCoverageAnswer(answer: string): { answer: string; source: string } {
-    const lowerAnswer = answer.toLowerCase();
-    if (lowerAnswer.includes('covered') || lowerAnswer.includes('eligible')) {
-      return { answer: 'COVERED', source: 'unknown' };
-    } else if (lowerAnswer.includes('not covered') || lowerAnswer.includes('not eligible') || lowerAnswer.includes('denied')) {
-      return { answer: 'NOT_COVERED', source: 'unknown' };
-    } else if (lowerAnswer.includes('prior authorization') || lowerAnswer.includes('pa required')) {
-      return { answer: 'PA_REQUIRED', source: 'unknown' };
-    }
-    return { answer: 'UNCLEAR', source: 'unknown' };
-  }
-
-  /**
-   * Extract requirements from answer
-   */
-  private extractRequirements(answer: string): { answer: string; source: string } {
-    const requirements = [];
-    const lowerAnswer = answer.toLowerCase();
-    
-    if (lowerAnswer.includes('modifier')) requirements.push('modifier');
-    if (lowerAnswer.includes('documentation')) requirements.push('documentation');
-    if (lowerAnswer.includes('frequency')) requirements.push('frequency');
-    if (lowerAnswer.includes('age')) requirements.push('age');
-    
-    return { 
-      answer: requirements.length > 0 ? requirements.join(', ') : 'none', 
-      source: 'unknown' 
-    };
-  }
-
-  /**
-   * Group answers by coverage determination
-   */
-  private groupByCoverage(answers: { answer: string; source: string }[]): Array<{ answer: string; sources: string[] }> {
-    const groups: { [key: string]: string[] } = {};
-    answers.forEach((answer, index) => {
-      if (!groups[answer.answer]) {
-        groups[answer.answer] = [];
-      }
-      groups[answer.answer].push(`Source${index + 1}`);
-    });
-    
-    return Object.entries(groups).map(([answer, sources]) => ({
-      answer,
-      sources
-    }));
-  }
-
-  /**
-   * Group answers by requirements
-   */
-  private groupByRequirements(answers: { answer: string; source: string }[]): Array<{ answer: string; sources: string[] }> {
-    const groups: { [key: string]: string[] } = {};
-    answers.forEach((answer, index) => {
-      if (!groups[answer.answer]) {
-        groups[answer.answer] = [];
-      }
-      groups[answer.answer].push(`Source${index + 1}`);
-    });
-    
-    return Object.entries(groups).map(([answer, sources]) => ({
-      answer,
-      sources
-    }));
-  }
-
-  /**
-   * Calculate consensus level
-   */
-  private calculateConsensusLevel(results: IndividualResearchResult[]): '4/4_AGREE' | '3/4_AGREE' | '2/4_AGREE' | '1/4_AGREE' | 'NO_CONSENSUS' {
-    const coverageAnswers = results.map(r => this.extractCoverageAnswer(r.answer));
-    const coverageGroups = this.groupByCoverage(coverageAnswers);
-    
-    if (coverageGroups.length === 1) return '4/4_AGREE';
-    if (coverageGroups.length === 2) {
-      const largestGroup = Math.max(...coverageGroups.map(g => g.sources.length));
-      if (largestGroup === 3) return '3/4_AGREE';
-      if (largestGroup === 2) return '2/4_AGREE';
-    }
-    return 'NO_CONSENSUS';
-  }
+  // Conflict detection methods removed - now handled by Reviewer Agent
 
   /**
    * Build consensus from multiple model results

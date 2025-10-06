@@ -22,7 +22,7 @@ export class GoogleSearchService {
   /**
    * Search for medical coding information
    */
-  async searchMedicalCoding(query: string, numResults: number = 2): Promise<GoogleSearchResult[]> {
+  async searchMedicalCoding(query: string, numResults: number = 3): Promise<GoogleSearchResult[]> {
     try {
       // Log the query being sent to Google
       console.log(`🔍 Sending query to Google Custom Search: "${query}"`);

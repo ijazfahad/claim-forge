@@ -235,7 +235,8 @@ export class StepByStepValidationWorkflow {
     stepOrder: number
   ): Promise<ValidationStepResult> {
     const stepStartTime = Date.now();
-    console.log(`\n🔍 Step ${stepOrder}: Running sanity check...`);
+    console.log(`\n🔍 STEP ${stepOrder}: SANITY CHECK`);
+    console.log('📋 Validating claim payload and performing AI clinical analysis...');
 
     try {
       const sanityResult = await this.sanityCheckAgent.performSanityCheck(payload);
@@ -245,6 +246,7 @@ export class StepByStepValidationWorkflow {
       console.log(`✅ Sanity check completed in ${duration}ms`);
       console.log(`🎯 Valid: ${sanityResult.is_valid}`);
       console.log(`🏥 Specialty: ${sanityResult.ssp_prediction.specialty} / ${sanityResult.ssp_prediction.subspecialty}`);
+      console.log(`📊 Policy Check Required: ${sanityResult.policy_check_required ? 'Yes' : 'No'}`);
 
       const stepResult: ValidationStepResult = {
         step_name: 'sanity_check',
@@ -308,7 +310,8 @@ export class StepByStepValidationWorkflow {
     stepOrder: number
   ): Promise<ValidationStepResult> {
     const stepStartTime = Date.now();
-    console.log(`\n📋 Step ${stepOrder}: Running planner...`);
+    console.log(`\n📋 STEP ${stepOrder}: PLANNER AGENT`);
+    console.log('📝 Generating validation questions based on claim complexity...');
 
     try {
       const plannerResult = await this.plannerAgent.generateQuestions(payload, sanityResult);
@@ -316,7 +319,13 @@ export class StepByStepValidationWorkflow {
       const duration = stepEndTime - stepStartTime;
 
       console.log(`✅ Planner completed in ${duration}ms`);
-      console.log(`📝 Generated ${plannerResult.questions.length} questions`);
+      console.log(`📝 Generated Questions: ${plannerResult.questions.length}`);
+      console.log(`📋 Questions:`);
+      plannerResult.questions.forEach((q, i) => {
+        console.log(`   ${i + 1}. ${q.q}`);
+        console.log(`      🏷️  Type: ${q.type}`);
+        console.log(`      🔍 Search Queries: ${q.search_queries.join(', ')}`);
+      });
 
       const stepResult: ValidationStepResult = {
         step_name: 'planner',
@@ -379,13 +388,19 @@ export class StepByStepValidationWorkflow {
   ): Promise<ValidationStepResult[]> {
     const stepResults: ValidationStepResult[] = [];
 
-    console.log(`\n🔬 Step ${stepOrder}: Running research for ${questions.length} questions...`);
+    console.log(`\n🔬 STEP ${stepOrder}: RESEARCH AGENT`);
+    console.log(`📊 Processing ${questions.length} questions with parallel Firecrawl + Multi-Model analysis`);
 
     for (let i = 0; i < questions.length; i++) {
       const question = questions[i];
       const stepStartTime = Date.now();
       
-      console.log(`   🔍 Researching question ${i + 1}: ${question.q.substring(0, 50)}...`);
+      console.log(`\n${'='.repeat(40)}`);
+      console.log(`🔍 RESEARCHING QUESTION ${i + 1}/${questions.length}`);
+      console.log(`${'='.repeat(40)}`);
+      console.log(`📝 Question: ${question.q}`);
+      console.log(`🏷️  Type: ${question.type}`);
+      console.log(`⚠️  Risk Flags: ${Object.entries(question.risk_flags).filter(([k,v]) => v).map(([k,v]) => k).join(', ') || 'None'}`);
 
       try {
         const researchResults = await this.researchAgent.executeResearch([question]);
@@ -393,7 +408,10 @@ export class StepByStepValidationWorkflow {
         const stepEndTime = Date.now();
         const duration = stepEndTime - stepStartTime;
 
-        console.log(`   ✅ Question ${i + 1} completed in ${duration}ms (confidence: ${(researchResult.confidence * 100).toFixed(1)}%)`);
+        console.log(`✅ Question ${i + 1} completed in ${duration}ms`);
+        console.log(`🎯 Confidence: ${(researchResult.confidence * 100).toFixed(1)}%`);
+        console.log(`🔍 Method: ${researchResult.metadata.extraction_method}`);
+        console.log(`📝 Answer Preview: ${researchResult.answer.substring(0, 100)}...`);
 
         const stepResult: ValidationStepResult = {
           step_name: `research_q${i + 1}`,
@@ -460,7 +478,8 @@ export class StepByStepValidationWorkflow {
     stepOrder: number
   ): Promise<ValidationStepResult> {
     const stepStartTime = Date.now();
-    console.log(`\n🔍 Step ${stepOrder}: Running reviewer...`);
+    console.log(`\n🔍 STEP ${stepOrder}: REVIEWER AGENT`);
+    console.log('🔍 Reviewing research results for conflicts and providing unified answers...');
 
     try {
       const reviewerResults = await this.conflictResolutionAgent.reviewResearchResults(
@@ -473,16 +492,16 @@ export class StepByStepValidationWorkflow {
       const duration = stepEndTime - stepStartTime;
 
       console.log(`✅ Review completed in ${duration}ms`);
-      console.log(`📊 Reviewed ${reviewerResults.length} questions`);
+      console.log(`📊 Reviewed Questions: ${reviewerResults.length}`);
       
       // Log summary of review results
       const conflictsDetected = reviewerResults.filter(r => r.review_analysis.detected_conflicts.length > 0).length;
       const conflictsResolved = reviewerResults.filter(r => r.review_status === 'resolved').length;
       const conflictsUnresolvable = reviewerResults.filter(r => r.review_status === 'unresolvable').length;
       
-      console.log(`🔍 Conflicts detected: ${conflictsDetected}`);
-      console.log(`✅ Conflicts resolved: ${conflictsResolved}`);
-      console.log(`❌ Unresolvable conflicts: ${conflictsUnresolvable}`);
+      console.log(`🔍 Conflicts Detected: ${conflictsDetected}`);
+      console.log(`✅ Conflicts Resolved: ${conflictsResolved}`);
+      console.log(`❌ Unresolvable Conflicts: ${conflictsUnresolvable}`);
 
       const stepResult: ValidationStepResult = {
         step_name: 'reviewer',
@@ -551,27 +570,13 @@ export class StepByStepValidationWorkflow {
     stepOrder: number
   ): Promise<ValidationStepResult> {
     const stepStartTime = Date.now();
-    console.log(`\n🎯 Step ${stepOrder}: Running evaluator...`);
+    console.log(`\n🎯 STEP ${stepOrder}: EVALUATOR AGENT`);
+    console.log('🎯 Making final claim decision based on reviewed research results...');
 
     try {
-      // Convert reviewer results back to research results format for evaluator
-      const reviewedResearchResults: ResearchResult[] = reviewerResults.map(result => ({
-        question: result.question,
-        answer: result.reviewed_answer,
-        confidence: result.confidence,
-        source: 'Reviewer',
-        metadata: {
-          extraction_method: 'enhanced-analysis' as const,
-          processing_time: result.processing_time_ms,
-          escalation_reason: result.review_status === 'unresolvable' ? 'Unresolvable conflicts' : undefined
-        },
-        recommendations: result.recommendations,
-        reviewer_data: result // Include full reviewer data
-      }));
-
       const evaluatorResult = await this.evaluatorAgent.evaluateClaim(
         claimValidationId,
-        reviewedResearchResults,
+        reviewerResults,
         questions,
         stepStartTime
       );
@@ -580,8 +585,9 @@ export class StepByStepValidationWorkflow {
       const duration = stepEndTime - stepStartTime;
 
       console.log(`✅ Evaluator completed in ${duration}ms`);
-      console.log(`📊 Final Status: ${evaluatorResult.overall_status}`);
-      console.log(`📈 Confidence: ${evaluatorResult.confidence}`);
+      console.log(`📊 Final Decision: ${evaluatorResult.overall_status}`);
+      console.log(`🎯 Confidence Level: ${evaluatorResult.confidence}`);
+      console.log(`📈 Approval Probability: ${evaluatorResult.overall_assessment.estimated_approval_probability}%`);
 
       const stepResult: ValidationStepResult = {
         step_name: 'evaluator',

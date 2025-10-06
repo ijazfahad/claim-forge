@@ -36,7 +36,7 @@ export class FirecrawlService {
             ...(this.apiKey && { 'Authorization': `Bearer ${this.apiKey}` }),
             'Content-Type': 'application/json',
           },
-          timeout: 30000, // 30 second timeout
+          timeout: 90000, // Increased to 1.5 minutes for scrape requests
         }
       );
 
@@ -119,7 +119,7 @@ export class FirecrawlService {
               ...(this.apiKey && { 'Authorization': `Bearer ${this.apiKey}` }),
               'Content-Type': 'application/json',
             },
-            timeout: 60000, // Reduced from 45000ms to 30000ms
+            timeout: 300000, // Increased to 5 minutes for multi-URL processing
           }
         );
 
@@ -197,7 +197,7 @@ export class FirecrawlService {
                 ...(this.apiKey && { 'Authorization': `Bearer ${this.apiKey}` }),
                 'Content-Type': 'application/json',
               },
-              timeout: 30000, // Reduced from 45000ms to 30000ms
+              timeout: 90000, // Increased to 1.5 minutes for individual URL processing
             }
           );
 
@@ -271,7 +271,7 @@ export class FirecrawlService {
               },
               {
                 headers: { ...(this.apiKey && { 'Authorization': `Bearer ${this.apiKey}` }), 'Content-Type': 'application/json' },
-                timeout: 30000, // Reduced from 45000ms to 30000ms
+                timeout: 90000, // Increased to 1.5 minutes for individual URL processing
               }
             );
             
@@ -387,7 +387,7 @@ export class FirecrawlService {
             },
             {
               headers: { ...(this.apiKey && { 'Authorization': `Bearer ${this.apiKey}` }), 'Content-Type': 'application/json' },
-              timeout: 30000, // Reduced from 45000ms to 30000ms
+              timeout: 90000, // Increased to 1.5 minutes for individual URL processing
             }
           );
 
@@ -479,7 +479,7 @@ export class FirecrawlService {
             ...(this.apiKey && { 'Authorization': `Bearer ${this.apiKey}` }),
             'Content-Type': 'application/json',
           },
-          timeout: 45000,
+          timeout: 90000, // Increased to 1.5 minutes for scrape requests
         }
       );
 
@@ -590,7 +590,7 @@ export class FirecrawlService {
   /**
    * Poll for extraction results using extract ID
    */
-  private async pollExtractResult(extractId: string, originalUrl: string, maxAttempts: number = 10): Promise<any> {
+  private async pollExtractResult(extractId: string, originalUrl: string, maxAttempts: number = 15): Promise<any> {
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         console.log(`  🔍 Polling extract result (attempt ${attempt}/${maxAttempts}): ${extractId}`);
@@ -601,7 +601,7 @@ export class FirecrawlService {
             headers: {
               ...(this.apiKey && { 'Authorization': `Bearer ${this.apiKey}` }),
             },
-            timeout: 30000,
+            timeout: 60000, // Increased to 1 minute for polling requests
           }
         );
 
@@ -612,12 +612,12 @@ export class FirecrawlService {
         } else {
           console.log(`  ⏳ Extract still processing: ${result.error || 'Processing...'}`);
           // Wait before next attempt
-          await new Promise(resolve => setTimeout(resolve, 3000));
+          await new Promise(resolve => setTimeout(resolve, 5000)); // Increased wait time to 5 seconds
         }
       } catch (error) {
         if (error instanceof Error && error.message.includes('Extract job not found')) {
           console.log(`  ⏳ Extract job not found yet (attempt ${attempt}), retrying...`);
-          await new Promise(resolve => setTimeout(resolve, 3000));
+          await new Promise(resolve => setTimeout(resolve, 5000)); // Increased wait time to 5 seconds
           continue;
         }
         console.error(`  ❌ Polling error (attempt ${attempt}):`, error instanceof Error ? error.message : error);
