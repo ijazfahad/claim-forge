@@ -182,15 +182,15 @@ async function executeValidationWithUpdates(
     });
 
     console.log('\n' + '-'.repeat(60));
-    console.log('🔬 STEP 3: RESEARCH AGENT');
+    console.log('🔬 STEP 3: RESEARCH + REVIEW AGENT');
     console.log('-'.repeat(60));
     console.log('📊 Processing Questions:', questionCount);
     
-    // Step 3: Research (using automated workflow step for proper database storage)
+    // Step 3: Research + Review (per question)
     sendSSE(res, {
       step: 'research',
       status: 'active',
-      message: `🔬 Researching ${questionCount} questions...`,
+      message: `🔬 Researching and reviewing ${questionCount} questions...`,
       progress: 60
     });
 
@@ -201,98 +201,52 @@ async function executeValidationWithUpdates(
     );
 
     if (researchStepResults.some(result => result.status === 'failed')) {
-      console.log('❌ Research FAILED - stopping workflow');
+      console.log('❌ Research + Review FAILED - stopping workflow');
       sendSSE(res, {
         step: 'research',
         status: 'error',
-        message: '❌ Research failed - stopping workflow',
+        message: '❌ Research + Review failed - stopping workflow',
         progress: 80
       });
-      throw new Error('Research failed');
+      throw new Error('Research + Review failed');
     }
 
-    // Extract research results from step results
-    const researchResults = researchStepResults.map(step => step.output_data).filter(result => result);
+    // Extract reviewer results from step results (now contains final reviewed results)
+    const reviewerResults = researchStepResults.map(step => step.output_data).filter(result => result);
     
-    console.log('✅ Research COMPLETED');
+    console.log('✅ Research + Review COMPLETED');
     console.log('📊 Results Summary:');
-    researchResults.forEach((result, index) => {
+    reviewerResults.forEach((result, index) => {
       console.log(`   ${index + 1}. ${result.question.substring(0, 60)}...`);
-      console.log(`      🎯 Confidence: ${(result.confidence * 100).toFixed(1)}%`);
-      console.log(`      🔍 Method: ${result.metadata.extraction_method}`);
-      console.log(`      📝 Answer: ${result.answer.substring(0, 80)}...`);
+      console.log(`      🎯 Final Confidence: ${(result.confidence * 100).toFixed(1)}%`);
+      console.log(`      🔍 Review Status: ${result.review_status}`);
+      console.log(`      ⚠️  Conflicts Detected: ${result.review_analysis.detected_conflicts.length}`);
+      console.log(`      📝 Final Answer: ${result.reviewed_answer.substring(0, 80)}...`);
     });
 
     sendSSE(res, {
       step: 'research',
       status: 'completed',
-      message: `✅ Research completed for ${researchResults.length} questions`,
+      message: `✅ Research + Review completed for ${reviewerResults.length} questions`,
       progress: 80
     });
 
     console.log('\n' + '-'.repeat(60));
-    console.log('🔍 STEP 4: REVIEWER AGENT');
+    console.log('🎯 STEP 4: EVALUATOR AGENT');
     console.log('-'.repeat(60));
     
-    // Step 4: Reviewer Agent (using automated workflow step for proper database storage)
-    sendSSE(res, {
-      step: 'reviewer',
-      status: 'active',
-      message: '🔍 Reviewing research results for conflicts...',
-      progress: 85
-    });
-
-    const reviewerStepResult = await workflow['executeReviewerStep'](
-      claimValidationId,
-      researchResults,
-      plannerResult.output_data.questions,
-      4
-    );
-
-    if (reviewerStepResult.status === 'failed') {
-      console.log('❌ Reviewer FAILED - stopping workflow');
-      sendSSE(res, {
-        step: 'reviewer',
-        status: 'error',
-        message: '❌ Reviewer failed - stopping workflow',
-        progress: 90
-      });
-      throw new Error('Reviewer failed');
-    }
-
-    console.log('✅ Reviewer COMPLETED');
-    console.log('📊 Review Summary:');
-    reviewerStepResult.output_data.forEach((result: any, index: number) => {
-      console.log(`   ${index + 1}. ${result.question.substring(0, 60)}...`);
-      console.log(`      🎯 Final Confidence: ${(result.confidence * 100).toFixed(1)}%`);
-      console.log(`      🔍 Review Status: ${result.review_status}`);
-      console.log(`      ⚠️  Conflicts Detected: ${result.review_analysis.detected_conflicts.length}`);
-    });
-
-    sendSSE(res, {
-      step: 'reviewer',
-      status: 'completed',
-      message: `✅ Review completed - ${reviewerStepResult.output_data.length} questions analyzed`,
-      progress: 90
-    });
-
-    console.log('\n' + '-'.repeat(60));
-    console.log('🎯 STEP 5: EVALUATOR AGENT');
-    console.log('-'.repeat(60));
-    
-    // Step 5: Evaluator
+    // Step 4: Evaluator Agent (using stored reviewer results)
     sendSSE(res, {
       step: 'evaluator',
       status: 'active',
       message: '🎯 Making final decision...',
-      progress: 95
+      progress: 90
     });
 
     const evaluatorResult = await workflow['executeEvaluatorStep'](
       claimValidationId,
-      reviewerStepResult.output_data,
       plannerResult.output_data.questions,
-      5
+      4
     );
 
     if (evaluatorResult.status === 'failed') {

@@ -34,6 +34,7 @@ export class StepByStepValidationWorkflow {
   private claimStorageService: ClaimStorageService;
   private googleSearchService: GoogleSearchService;
   private firecrawlService: FirecrawlService;
+  private finalReviewerResults: ReviewerResult[] = [];
 
   constructor() {
     this.sanityCheckAgent = new SanityCheckAgent();
@@ -91,7 +92,7 @@ export class StepByStepValidationWorkflow {
         return await this.createFailureResult(claimId, stepResults, startTime);
       }
 
-      // Step 3: Research Agent (for each question)
+      // Step 3: Research + Review Agent (per question)
       const researchStepResults = await this.executeResearchSteps(
         claimValidationId,
         plannerStepResult.output_data.questions,
@@ -99,19 +100,9 @@ export class StepByStepValidationWorkflow {
       );
       stepResults.push(...researchStepResults);
 
-      // Step 4: Reviewer Agent
-      const reviewerStepResult = await this.executeReviewerStep(
-        claimValidationId,
-        researchStepResults.map(r => r.output_data).filter(r => r),
-        plannerStepResult.output_data.questions,
-        stepResults.length + 1
-      );
-      stepResults.push(reviewerStepResult);
-
-      // Step 5: Evaluator Agent
+      // Step 4: Evaluator Agent (using stored reviewer results)
       const evaluatorStepResult = await this.executeEvaluatorStep(
         claimValidationId,
-        reviewerStepResult.output_data,
         plannerStepResult.output_data.questions,
         stepResults.length + 1
       );
@@ -387,45 +378,76 @@ export class StepByStepValidationWorkflow {
     stepOrder: number
   ): Promise<ValidationStepResult[]> {
     const stepResults: ValidationStepResult[] = [];
+    this.finalReviewerResults = []; // Reset reviewer results
 
-    console.log(`\n🔬 STEP ${stepOrder}: RESEARCH AGENT`);
-    console.log(`📊 Processing ${questions.length} questions with parallel Firecrawl + Multi-Model analysis`);
+    console.log(`\n🔬 STEP ${stepOrder}: RESEARCH + REVIEW AGENT`);
+    console.log(`📊 Processing ${questions.length} questions with per-question research and review`);
 
     for (let i = 0; i < questions.length; i++) {
       const question = questions[i];
       const stepStartTime = Date.now();
       
-      console.log(`\n${'='.repeat(40)}`);
-      console.log(`🔍 RESEARCHING QUESTION ${i + 1}/${questions.length}`);
-      console.log(`${'='.repeat(40)}`);
+      console.log(`\n${'='.repeat(50)}`);
+      console.log(`🔍 PROCESSING QUESTION ${i + 1}/${questions.length}`);
+      console.log(`${'='.repeat(50)}`);
       console.log(`📝 Question: ${question.q}`);
       console.log(`🏷️  Type: ${question.type}`);
       console.log(`⚠️  Risk Flags: ${Object.entries(question.risk_flags).filter(([k,v]) => v).map(([k,v]) => k).join(', ') || 'None'}`);
 
       try {
+        // Step 1: Research the question
+        console.log(`\n🔬 RESEARCHING QUESTION ${i + 1}...`);
         const researchResults = await this.researchAgent.executeResearch([question]);
         const researchResult = researchResults[0]; // Get the first (and only) result
-        const stepEndTime = Date.now();
-        const duration = stepEndTime - stepStartTime;
 
-        console.log(`✅ Question ${i + 1} completed in ${duration}ms`);
+        console.log(`✅ Research completed for question ${i + 1}`);
         console.log(`🎯 Confidence: ${(researchResult.confidence * 100).toFixed(1)}%`);
         console.log(`🔍 Method: ${researchResult.metadata.extraction_method}`);
         console.log(`📝 Answer Preview: ${researchResult.answer.substring(0, 100)}...`);
 
+        // Store research result
+        await this.claimStorageService.storeResearchResult(claimValidationId, researchResult);
+
+        // Step 2: Review the research result immediately
+        console.log(`\n🔍 REVIEWING QUESTION ${i + 1}...`);
+        const reviewerResultsForQuestion = await this.conflictResolutionAgent.reviewResearchResults(
+          [researchResult],
+          [question],
+          stepStartTime
+        );
+        const reviewerResult = reviewerResultsForQuestion[0]; // Get the first (and only) result
+
+        console.log(`✅ Review completed for question ${i + 1}`);
+        console.log(`🎯 Final Confidence: ${(reviewerResult.confidence * 100).toFixed(1)}%`);
+        console.log(`🔍 Review Status: ${reviewerResult.review_status}`);
+        console.log(`⚠️  Conflicts Detected: ${reviewerResult.review_analysis.detected_conflicts.length}`);
+        console.log(`📝 Final Answer Preview: ${reviewerResult.reviewed_answer.substring(0, 100)}...`);
+
+        // Store reviewer result and conflicts
+        await this.claimStorageService.storeReviewerResult(claimValidationId, reviewerResult);
+        for (const conflict of reviewerResult.review_analysis.detected_conflicts) {
+          await this.claimStorageService.storeDetectedConflict(claimValidationId, reviewerResult.question, conflict);
+        }
+
+        // Add to reviewer results for evaluator
+        this.finalReviewerResults.push(reviewerResult);
+
+        const stepEndTime = Date.now();
+        const duration = stepEndTime - stepStartTime;
+
         const stepResult: ValidationStepResult = {
-          step_name: `research_q${i + 1}`,
+          step_name: `research_review_q${i + 1}`,
           step_order: stepOrder + i,
           status: 'completed',
           start_time: new Date(stepStartTime),
           end_time: new Date(stepEndTime),
           duration_ms: duration,
           input_data: question,
-          output_data: researchResult,
-          confidence_score: researchResult.confidence,
-          agent_type: 'research',
+          output_data: reviewerResult, // Store the final reviewed result
+          confidence_score: reviewerResult.confidence,
+          agent_type: 'research_review',
           model_used: researchResult.metadata.extraction_method === 'multi-model' ? 'multi-model' : 'firecrawl',
-          escalation_reason: researchResult.metadata.escalation_reason
+          escalation_reason: reviewerResult.review_status === 'unresolvable' ? 'Unresolvable conflicts detected' : undefined
         };
 
         // Store step result
@@ -434,16 +456,15 @@ export class StepByStepValidationWorkflow {
           ...stepResult
         });
 
-        // Store detailed research result
-        await this.claimStorageService.storeResearchResult(claimValidationId, researchResult);
-
         stepResults.push(stepResult);
 
+        console.log(`\n✅ QUESTION ${i + 1} COMPLETED (Research + Review) in ${duration}ms`);
+
       } catch (error) {
-        console.error(`   ❌ Research failed for question ${i + 1}:`, error);
+        console.error(`❌ Processing failed for question ${i + 1}:`, error);
         
         const stepResult: ValidationStepResult = {
-          step_name: `research_q${i + 1}`,
+          step_name: `research_review_q${i + 1}`,
           step_order: stepOrder + i,
           status: 'failed',
           start_time: new Date(stepStartTime),
@@ -452,8 +473,9 @@ export class StepByStepValidationWorkflow {
           input_data: question,
           output_data: null,
           errors: [error instanceof Error ? error.message : 'Unknown error'],
-          agent_type: 'research',
-          model_used: 'firecrawl'
+          agent_type: 'research_review',
+          model_used: 'unknown',
+          escalation_reason: error instanceof Error ? error.message : 'Unknown error'
         };
 
         await this.claimStorageService.storeValidationStep({
@@ -565,7 +587,6 @@ export class StepByStepValidationWorkflow {
    */
   private async executeEvaluatorStep(
     claimValidationId: string,
-    reviewerResults: ReviewerResult[],
     questions: ValidationQuestion[],
     stepOrder: number
   ): Promise<ValidationStepResult> {
@@ -576,7 +597,7 @@ export class StepByStepValidationWorkflow {
     try {
       const evaluatorResult = await this.evaluatorAgent.evaluateClaim(
         claimValidationId,
-        reviewerResults,
+        this.finalReviewerResults, // Use the stored reviewer results
         questions,
         stepStartTime
       );
@@ -596,7 +617,7 @@ export class StepByStepValidationWorkflow {
         start_time: new Date(stepStartTime),
         end_time: new Date(stepEndTime),
         duration_ms: duration,
-        input_data: { reviewerResults, questions },
+        input_data: { questions },
         output_data: evaluatorResult,
         confidence_score: evaluatorResult.confidence === 'high' ? 0.9 : 
                          evaluatorResult.confidence === 'medium' ? 0.7 : 0.5,
@@ -622,7 +643,7 @@ export class StepByStepValidationWorkflow {
         start_time: new Date(stepStartTime),
         end_time: new Date(),
         duration_ms: Date.now() - stepStartTime,
-        input_data: { reviewerResults, questions },
+        input_data: { questions },
         output_data: null,
         errors: [error instanceof Error ? error.message : 'Unknown error'],
         agent_type: 'evaluator',

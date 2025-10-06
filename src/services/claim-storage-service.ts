@@ -653,6 +653,78 @@ export class ClaimStorageService {
   }
 
   /**
+   * Store reviewer result in the database
+   */
+  async storeReviewerResult(claimValidationId: string, reviewerResult: any): Promise<void> {
+    const client = await this.pool.connect();
+    try {
+      const query = `
+        INSERT INTO claim_forge.reviewer_results (
+          claim_validation_id,
+          question_id,
+          question_text,
+          reviewed_answer,
+          confidence,
+          review_status,
+          review_analysis,
+          source_analysis,
+          recommendations,
+          processing_time_ms,
+          created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+      `;
+      
+      await client.query(query, [
+        claimValidationId,
+        reviewerResult.question_id || `Q${Date.now()}`,
+        reviewerResult.question,
+        reviewerResult.reviewed_answer,
+        reviewerResult.confidence,
+        reviewerResult.review_status,
+        JSON.stringify(reviewerResult.review_analysis),
+        JSON.stringify(reviewerResult.source_analysis),
+        reviewerResult.recommendations, // Already an array, don't stringify
+        reviewerResult.processing_time_ms
+      ]);
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Store detected conflict in the database
+   */
+  async storeDetectedConflict(claimValidationId: string, question: string, conflict: any): Promise<void> {
+    const client = await this.pool.connect();
+    try {
+      const query = `
+        INSERT INTO claim_forge.detected_conflicts (
+          claim_validation_id,
+          question_text,
+          conflict_type,
+          description,
+          conflicting_sources,
+          severity,
+          resolution_suggestion,
+          created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+      `;
+      
+      await client.query(query, [
+        claimValidationId,
+        question,
+        conflict.type,
+        conflict.description,
+        conflict.conflicting_sources, // Already an array, don't stringify
+        conflict.severity,
+        conflict.resolution_suggestion
+      ]);
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
    * Close the database connection pool
    */
   async close(): Promise<void> {
