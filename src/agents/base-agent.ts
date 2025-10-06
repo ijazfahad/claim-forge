@@ -47,15 +47,19 @@ export abstract class BaseAgent {
   /**
    * Execute agent with input using OpenRouter
    */
-  protected async executeAgent(agent: Agent, input: string): Promise<any> {
+  protected async executeAgent(agent: Agent, input: string, options?: {
+    model?: string;
+    temperature?: number;
+    max_tokens?: number;
+  }): Promise<any> {
     try {
       // Use OpenRouter for agent execution instead of direct OpenAI
       const response = await this.openRouter.generateResponse(
         input,
-        process.env.BASE_AGENT_MODEL || 'gpt-4o-mini',
+        options?.model || process.env.BASE_AGENT_MODEL || 'gpt-4o-mini',
         {
-          temperature: parseFloat(process.env.BASE_AGENT_TEMPERATURE || '0.1'),
-          max_tokens: parseInt(process.env.BASE_AGENT_MAX_TOKENS || '2000'),
+          temperature: options?.temperature || parseFloat(process.env.BASE_AGENT_TEMPERATURE || '0.1'),
+          max_tokens: options?.max_tokens || parseInt(process.env.BASE_AGENT_MAX_TOKENS || '2000'),
           system_prompt: typeof agent.instructions === 'string' ? agent.instructions : 'You are a helpful AI assistant.'
         }
       );

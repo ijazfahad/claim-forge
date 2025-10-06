@@ -2,7 +2,6 @@ import { runSanityCheckTests } from './sanity-check-agent-test';
 import { runPlannerAgentTests } from './planner-agent-test';
 import ResearchAgentTestSuite from './research-agent-test';
 import EvaluatorAgentTestSuite from './evaluator-agent-test';
-import { runEvaluateAgentTests } from './evaluate-agent-test';
 import { runGoogleSearchTests } from './google-search-test';
 import { runFirecrawlTests } from './firecrawl-test';
 import { GoogleSearchAgentTestSuite } from './google-search-agent-test';
@@ -45,11 +44,6 @@ const testSuites: TestSuite[] = [
       const testSuite = new EvaluatorAgentTestSuite();
       await testSuite.runTests();
     }
-  },
-  {
-    name: 'Evaluate Agent',
-    description: 'Tests final decision making based on research results',
-    run: runEvaluateAgentTests
   },
   {
     name: 'Google Search Service',

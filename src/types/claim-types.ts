@@ -19,48 +19,9 @@ export interface ClaimValidationRequest {
   payload: ClaimPayload;
 }
 
-// SSP (Specialty & Subspecialty Prediction) types
-export interface SSPResult {
-  specialty: string;
-  subspecialty: string;
-  confidence: 'low' | 'medium' | 'high';
-  rationale: string;
-  derived: {
-    cpt_codes: string[];
-    icd10_codes: string[];
-    place_of_service: string;
-    member_plan_type: string;
-    state: string;
-  };
-}
-
-// PDM (Predictive Denial Management) types
-export interface PDMResult {
-  denial_risks: DenialRisk[];
-  overall_risk_score: number;
-  recommendations: string[];
-  fixes: ClaimFix[];
-}
-
-export interface DenialRisk {
-  code: string;
-  risk_percentage: number;
-  reason: string;
-  category: 'PA' | 'coding' | 'necessity' | 'eligibility' | 'modifiers' | 'frequency';
-}
-
-export interface ClaimFix {
-  action: 'add' | 'remove' | 'modify' | 'skip';
-  target: string;
-  value?: string;
-  reason: string;
-}
-
 // Validation response types
 export interface ValidationResponse {
   claim_id: string;
-  ssp_result: SSPResult;
-  pdm_result: PDMResult;
   processing_time_ms: number;
   timestamp: string;
 }

@@ -173,7 +173,11 @@ Consider all confidence levels, recommendations, and risk factors.
 `;
 
     try {
-      const result = await this.executeAgent(this.agent!, input);
+      const result = await this.executeAgent(this.agent!, input, {
+        model: process.env.EVALUATOR_MODEL,
+        temperature: process.env.EVALUATOR_TEMPERATURE ? parseFloat(process.env.EVALUATOR_TEMPERATURE) : undefined,
+        max_tokens: process.env.EVALUATOR_MAX_TOKENS ? parseInt(process.env.EVALUATOR_MAX_TOKENS) : undefined
+      });
       
       const processingTime = Date.now() - startTime;
 

@@ -217,7 +217,11 @@ Follow the exact output format and question count requirements specified in the 
 `;
 
     try {
-      const result = await this.executeAgent(this.agent!, input);
+      const result = await this.executeAgent(this.agent!, input, {
+        model: process.env.PLANNER_MODEL,
+        temperature: process.env.PLANNER_TEMPERATURE ? parseFloat(process.env.PLANNER_TEMPERATURE) : undefined,
+        max_tokens: process.env.PLANNER_MAX_TOKENS ? parseInt(process.env.PLANNER_MAX_TOKENS) : undefined
+      });
       
       // Get questions from result
       const questions = result.questions || [];

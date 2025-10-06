@@ -30,49 +30,6 @@ export class RedisService {
   }
 
   /**
-   * Cache SSP results
-   */
-  async cacheSSPResult(
-    cptCodes: string[],
-    icdCodes: string[],
-    result: any,
-    ttl: number = 86400 // 24 hours
-  ): Promise<void> {
-    const key = `ssp:${cptCodes.join(',')}:${icdCodes.join(',')}`;
-    await this.redis.setex(key, ttl, JSON.stringify(result));
-  }
-
-  /**
-   * Get cached SSP result
-   */
-  async getCachedSSPResult(cptCodes: string[], icdCodes: string[]): Promise<any | null> {
-    const key = `ssp:${cptCodes.join(',')}:${icdCodes.join(',')}`;
-    const cached = await this.redis.get(key);
-    return cached ? JSON.parse(cached) : null;
-  }
-
-  /**
-   * Cache PDM results
-   */
-  async cachePDMResult(
-    claimHash: string,
-    result: any,
-    ttl: number = 3600 // 1 hour
-  ): Promise<void> {
-    const key = `pdm:${claimHash}`;
-    await this.redis.setex(key, ttl, JSON.stringify(result));
-  }
-
-  /**
-   * Get cached PDM result
-   */
-  async getCachedPDMResult(claimHash: string): Promise<any | null> {
-    const key = `pdm:${claimHash}`;
-    const cached = await this.redis.get(key);
-    return cached ? JSON.parse(cached) : null;
-  }
-
-  /**
    * Store denial patterns
    */
   async storeDenialPattern(
