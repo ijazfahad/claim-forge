@@ -3,7 +3,7 @@
 # Firecrawl v1/extract API request with multiple URLs
 # Based on our updated implementation (FIXED - removed extractorOptions)
 
-curl -X POST https://api.firecrawl.dev/v2/extract \
+curl -X POST https://localhost:3002/v2/extract \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer fc-0ee0ddd9151b498094fee2c11dd6def8' \
   -d '{

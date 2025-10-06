@@ -2,6 +2,7 @@ import { ClaimPayload } from '../types/claim-types';
 import { SanityCheckAgent, SanityCheckResult } from '../agents/sanity-check-agent';
 import { PlannerAgent, PlannerResult, ValidationQuestion } from '../agents/planner-agent';
 import { ResearchAgent, ResearchResult } from '../agents/research-agent';
+import { ReviewerAgent, ReviewerResult } from '../agents/reviewer-agent';
 import { EvaluatorAgent, EvaluatorDecision } from '../agents/evaluator-agent';
 import { ClaimStorageService } from './claim-storage-service';
 import { GoogleSearchService } from './google-search';
@@ -28,6 +29,7 @@ export class StepByStepValidationWorkflow {
   private sanityCheckAgent: SanityCheckAgent;
   private plannerAgent: PlannerAgent;
   private researchAgent: ResearchAgent;
+  private conflictResolutionAgent: ReviewerAgent;
   private evaluatorAgent: EvaluatorAgent;
   private claimStorageService: ClaimStorageService;
   private googleSearchService: GoogleSearchService;
@@ -37,6 +39,7 @@ export class StepByStepValidationWorkflow {
     this.sanityCheckAgent = new SanityCheckAgent();
     this.plannerAgent = new PlannerAgent();
     this.researchAgent = new ResearchAgent();
+    this.conflictResolutionAgent = new ReviewerAgent();
     this.evaluatorAgent = new EvaluatorAgent();
     this.claimStorageService = new ClaimStorageService();
     this.googleSearchService = new GoogleSearchService();
@@ -96,10 +99,19 @@ export class StepByStepValidationWorkflow {
       );
       stepResults.push(...researchStepResults);
 
-      // Step 4: Evaluator Agent
-      const evaluatorStepResult = await this.executeEvaluatorStep(
+      // Step 4: Reviewer Agent
+      const reviewerStepResult = await this.executeReviewerStep(
         claimValidationId,
         researchStepResults.map(r => r.output_data).filter(r => r),
+        plannerStepResult.output_data.questions,
+        stepResults.length + 1
+      );
+      stepResults.push(reviewerStepResult);
+
+      // Step 5: Evaluator Agent
+      const evaluatorStepResult = await this.executeEvaluatorStep(
+        claimValidationId,
+        reviewerStepResult.output_data,
         plannerStepResult.output_data.questions,
         stepResults.length + 1
       );
@@ -439,11 +451,102 @@ export class StepByStepValidationWorkflow {
   }
 
   /**
+   * Execute Reviewer step and store results
+   */
+  private async executeReviewerStep(
+    claimValidationId: string,
+    researchResults: ResearchResult[],
+    questions: ValidationQuestion[],
+    stepOrder: number
+  ): Promise<ValidationStepResult> {
+    const stepStartTime = Date.now();
+    console.log(`\n🔍 Step ${stepOrder}: Running reviewer...`);
+
+    try {
+      const reviewerResults = await this.conflictResolutionAgent.reviewResearchResults(
+        researchResults,
+        questions,
+        stepStartTime
+      );
+      
+      const stepEndTime = Date.now();
+      const duration = stepEndTime - stepStartTime;
+
+      console.log(`✅ Review completed in ${duration}ms`);
+      console.log(`📊 Reviewed ${reviewerResults.length} questions`);
+      
+      // Log summary of review results
+      const conflictsDetected = reviewerResults.filter(r => r.review_analysis.detected_conflicts.length > 0).length;
+      const conflictsResolved = reviewerResults.filter(r => r.review_status === 'resolved').length;
+      const conflictsUnresolvable = reviewerResults.filter(r => r.review_status === 'unresolvable').length;
+      
+      console.log(`🔍 Conflicts detected: ${conflictsDetected}`);
+      console.log(`✅ Conflicts resolved: ${conflictsResolved}`);
+      console.log(`❌ Unresolvable conflicts: ${conflictsUnresolvable}`);
+
+      const stepResult: ValidationStepResult = {
+        step_name: 'reviewer',
+        step_order: stepOrder,
+        status: 'completed',
+        start_time: new Date(stepStartTime),
+        end_time: new Date(stepEndTime),
+        duration_ms: duration,
+        input_data: {
+          research_results: researchResults,
+          questions: questions
+        },
+        output_data: reviewerResults,
+        agent_type: 'reviewer',
+        model_used: process.env.REVIEWER_MODEL || 'gpt-4o-mini'
+      };
+
+      // Store step result
+      await this.claimStorageService.storeValidationStep({
+        claim_validation_id: claimValidationId,
+        ...stepResult
+      });
+
+      return stepResult;
+
+    } catch (error) {
+      console.error('Review step failed:', error);
+      
+      const stepEndTime = Date.now();
+      const duration = stepEndTime - stepStartTime;
+
+      const stepResult: ValidationStepResult = {
+        step_name: 'reviewer',
+        step_order: stepOrder,
+        status: 'failed',
+        start_time: new Date(stepStartTime),
+        end_time: new Date(stepEndTime),
+        duration_ms: duration,
+        input_data: {
+          research_results: researchResults,
+          questions: questions
+        },
+        output_data: null,
+        errors: [error instanceof Error ? error.message : 'Unknown error'],
+        agent_type: 'reviewer',
+        model_used: process.env.REVIEWER_MODEL || 'gpt-4o-mini'
+      };
+
+      // Store failed step result
+      await this.claimStorageService.storeValidationStep({
+        claim_validation_id: claimValidationId,
+        ...stepResult
+      });
+
+      return stepResult;
+    }
+  }
+
+  /**
    * Execute Evaluator step and store results
    */
   private async executeEvaluatorStep(
     claimValidationId: string,
-    researchResults: ResearchResult[],
+    reviewerResults: ReviewerResult[],
     questions: ValidationQuestion[],
     stepOrder: number
   ): Promise<ValidationStepResult> {
@@ -451,9 +554,24 @@ export class StepByStepValidationWorkflow {
     console.log(`\n🎯 Step ${stepOrder}: Running evaluator...`);
 
     try {
+      // Convert reviewer results back to research results format for evaluator
+      const reviewedResearchResults: ResearchResult[] = reviewerResults.map(result => ({
+        question: result.question,
+        answer: result.reviewed_answer,
+        confidence: result.confidence,
+        source: 'Reviewer',
+        metadata: {
+          extraction_method: 'enhanced-analysis' as const,
+          processing_time: result.processing_time_ms,
+          escalation_reason: result.review_status === 'unresolvable' ? 'Unresolvable conflicts' : undefined
+        },
+        recommendations: result.recommendations,
+        reviewer_data: result // Include full reviewer data
+      }));
+
       const evaluatorResult = await this.evaluatorAgent.evaluateClaim(
         claimValidationId,
-        researchResults,
+        reviewedResearchResults,
         questions,
         stepStartTime
       );
@@ -472,7 +590,7 @@ export class StepByStepValidationWorkflow {
         start_time: new Date(stepStartTime),
         end_time: new Date(stepEndTime),
         duration_ms: duration,
-        input_data: { researchResults, questions },
+        input_data: { reviewerResults, questions },
         output_data: evaluatorResult,
         confidence_score: evaluatorResult.confidence === 'high' ? 0.9 : 
                          evaluatorResult.confidence === 'medium' ? 0.7 : 0.5,
@@ -498,7 +616,7 @@ export class StepByStepValidationWorkflow {
         start_time: new Date(stepStartTime),
         end_time: new Date(),
         duration_ms: Date.now() - stepStartTime,
-        input_data: { researchResults, questions },
+        input_data: { reviewerResults, questions },
         output_data: null,
         errors: [error instanceof Error ? error.message : 'Unknown error'],
         agent_type: 'evaluator',

@@ -205,19 +205,51 @@ async function executeValidationWithUpdates(
       progress: 80
     });
 
-    // Step 4: Evaluator
+    // Step 4: Reviewer Agent
     sendSSE(res, {
-      step: 'evaluator',
+      step: 'reviewer',
       status: 'active',
-      message: '🎯 Making final decision...',
+      message: '🔍 Reviewing research results...',
       progress: 85
     });
 
-    const evaluatorResult = await workflow['executeEvaluatorStep'](
+    const reviewerResult = await workflow['executeReviewerStep'](
       claimValidationId,
       researchResults,
       questions,
       4
+    );
+
+    if (reviewerResult.status === 'failed') {
+      sendSSE(res, {
+        step: 'reviewer',
+        status: 'error',
+        message: '❌ Review failed',
+        progress: 90
+      });
+      throw new Error('Review failed');
+    }
+
+    sendSSE(res, {
+      step: 'reviewer',
+      status: 'completed',
+      message: '✅ Review completed',
+      progress: 90
+    });
+
+    // Step 5: Evaluator
+    sendSSE(res, {
+      step: 'evaluator',
+      status: 'active',
+      message: '🎯 Making final decision...',
+      progress: 95
+    });
+
+    const evaluatorResult = await workflow['executeEvaluatorStep'](
+      claimValidationId,
+      reviewerResult.output_data,
+      questions,
+      5
     );
 
     if (evaluatorResult.status === 'failed') {

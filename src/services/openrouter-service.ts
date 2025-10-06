@@ -204,14 +204,12 @@ Please provide a detailed analysis including:
 1. Direct answer to the question
 2. Confidence level (0-100%)
 3. Supporting reasoning
-4. Relevant policy references
-5. Risk assessment
+4. Risk assessment
 
 Format your response as:
 ANSWER: [Your direct answer]
 CONFIDENCE: [0-100%]
 REASONING: [Your detailed reasoning]
-POLICY_REFERENCES: [Any relevant policy citations]
 RISK_ASSESSMENT: [Low/Medium/High risk factors]`;
   }
 

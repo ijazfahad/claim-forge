@@ -22,8 +22,12 @@ export class GoogleSearchService {
   /**
    * Search for medical coding information
    */
-  async searchMedicalCoding(query: string, numResults: number = 1): Promise<GoogleSearchResult[]> {
+  async searchMedicalCoding(query: string, numResults: number = 2): Promise<GoogleSearchResult[]> {
     try {
+      // Log the query being sent to Google
+      console.log(`🔍 Sending query to Google Custom Search: "${query}"`);
+      console.log(`   📊 Requesting ${numResults} result(s)`);
+      
       const response: AxiosResponse<GoogleSearchResponse> = await axios.get(
         this.baseUrl,
         {
@@ -38,7 +42,21 @@ export class GoogleSearchService {
         }
       );
 
-      return response.data.items || [];
+      const results = response.data.items || [];
+      
+      // Log Google Search results
+      console.log(`🔍 Google Search Results for "${query}":`);
+      if (results.length > 0) {
+        results.forEach((result, index) => {
+          console.log(`   ${index + 1}. ${result.title}`);
+          console.log(`      URL: ${result.link}`);
+          console.log(`      Snippet: ${result.snippet?.substring(0, 100)}...`);
+        });
+      } else {
+        console.log(`   ❌ No results found for query: "${query}"`);
+      }
+      
+      return results;
     } catch (error) {
       console.error('Google Search error:', error);
       return [];

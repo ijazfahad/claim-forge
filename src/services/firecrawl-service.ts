@@ -125,7 +125,19 @@ export class FirecrawlService {
 
         if (multiUrlResponse.data.data) {
           console.log(`✅ Multi-URL extraction successful for ${urlsToProcess.length} URLs`);
+          
+          // Log multi-URL response details
+          console.log(`🔥 Firecrawl Multi-URL Response:`);
+          console.log(`   📊 Response Status: ${multiUrlResponse.status}`);
+          console.log(`   📄 Raw Response:`, JSON.stringify(multiUrlResponse.data, null, 2));
+          
           const extractedData = multiUrlResponse.data.data;
+          if (extractedData) {
+            console.log(`   ✅ Extracted Data:`);
+            console.log(`      Answer: ${extractedData.answer || 'N/A'}`);
+            console.log(`      Confidence: ${extractedData.confidence_level || 'N/A'}`);
+            console.log(`      Policy Reference: ${JSON.stringify(extractedData.policy_reference || {}, null, 2)}`);
+          }
           
           return {
             success: true,
@@ -191,6 +203,20 @@ export class FirecrawlService {
 
           // Handle /v1/extract endpoint response first, fallback to v2/scrape if needed  
           let extractedData = extractResponse.data.data;
+          
+          // Log Firecrawl response details
+          console.log(`🔥 Firecrawl Response for URL: ${url}`);
+          console.log(`   📊 Response Status: ${extractResponse.status}`);
+          console.log(`   📄 Raw Response:`, JSON.stringify(extractResponse.data, null, 2));
+          
+          if (extractedData) {
+            console.log(`   ✅ Extracted Data:`);
+            console.log(`      Answer: ${extractedData.answer || 'N/A'}`);
+            console.log(`      Confidence: ${extractedData.confidence_level || 'N/A'}`);
+            console.log(`      Policy Reference: ${JSON.stringify(extractedData.policy_reference || {}, null, 2)}`);
+          } else {
+            console.log(`   ❌ No extracted data found in response`);
+          }
           
           if (!extractedData) {
             // Fallback to /v2/scrape endpoint
