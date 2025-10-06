@@ -22,7 +22,7 @@ export class GoogleSearchService {
   /**
    * Search for medical coding information
    */
-  async searchMedicalCoding(query: string, numResults: number = 5): Promise<GoogleSearchResult[]> {
+  async searchMedicalCoding(query: string, numResults: number = 3): Promise<GoogleSearchResult[]> {
     try {
       const response: AxiosResponse<GoogleSearchResponse> = await axios.get(
         this.baseUrl,

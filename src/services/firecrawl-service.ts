@@ -62,43 +62,6 @@ export class FirecrawlService {
   }
 
   /**
-   * Search for payer policies using specialty-specific queries
-   */
-  async searchPayerPolicy(
-    payer: string,
-    specialty: string,
-    cptCode: string,
-    year: number = new Date().getFullYear()
-  ): Promise<FirecrawlResponse> {
-    const query = `${payer} ${specialty} policy ${cptCode} ${year}`;
-    const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
-    
-    return this.scrapeUrl(searchUrl);
-  }
-
-  /**
-   * Get denial patterns for a specific payer and CPT code
-   */
-  async getDenialPatterns(payer: string, cptCode: string): Promise<FirecrawlResponse> {
-    const query = `${payer} denial patterns ${cptCode} medical claims`;
-    const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
-    
-    return this.scrapeUrl(searchUrl);
-  }
-
-  /**
-   * Get specialty-specific coding guidelines
-   */
-  async getSpecialtyGuidelines(specialty: string, subspecialty?: string): Promise<FirecrawlResponse> {
-    const query = subspecialty 
-      ? `${specialty} ${subspecialty} coding guidelines CPT ICD`
-      : `${specialty} coding guidelines CPT ICD`;
-    const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
-    
-    return this.scrapeUrl(searchUrl);
-  }
-
-  /**
    * Extract content from URLs for specific claim validation questions
    * This is the primary method for Firecrawl Agent integration
    * 

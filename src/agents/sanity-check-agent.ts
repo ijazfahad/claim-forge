@@ -405,10 +405,7 @@ Output Format:
     }
 
     try {
-      const OpenAI = require('openai');
-      const openai = new OpenAI({
-        apiKey: process.env.OPENAI_API_KEY
-      });
+      // Use OpenRouter instead of direct OpenAI
 
       const prompt = `
 You are a senior insurance claim validator inspecting claims for a small one to two doctor clinic. 
@@ -468,25 +465,20 @@ MODIFIER VALIDATION GUIDELINES:
 - If any modifier appears inappropriate for the service, mark it as such
 `;
 
-      const response = await openai.chat.completions.create({
-        model: 'gpt-5-mini',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a medical coding expert with deep knowledge of CPT and ICD-10 coding guidelines, medical necessity, and clinical documentation requirements. Always respond with valid JSON only, no markdown formatting.'
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        max_completion_tokens: 3000
-      });
+      const response = await this.openRouter.generateResponse(
+        prompt,
+        process.env.SANITY_CHECK_MODEL || 'gpt-4o-mini',
+        {
+          temperature: parseFloat(process.env.SANITY_CHECK_TEMPERATURE || '0.1'),
+          max_tokens: parseInt(process.env.SANITY_CHECK_MAX_TOKENS || '3000'),
+          system_prompt: 'You are a medical coding expert with deep knowledge of CPT and ICD-10 coding guidelines, medical necessity, and clinical documentation requirements. Always respond with valid JSON only, no markdown formatting.'
+        }
+      );
 
       let aiAnalysis;
       try {
         // Clean the response to extract JSON
-        let responseText = response.choices[0].message.content || '{}';
+        let responseText = response || '{}';
         
         // Remove markdown code blocks if present
         responseText = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
@@ -523,7 +515,7 @@ MODIFIER VALIDATION GUIDELINES:
         }
       } catch (parseError) {
         console.error('JSON parse error:', parseError);
-        console.error('Raw response:', response.choices[0].message.content);
+        console.error('Raw response:', response);
         throw new Error('Failed to parse AI response as JSON');
       }
 

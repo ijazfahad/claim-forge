@@ -41,9 +41,9 @@ export class OpenRouterService {
   constructor() {
     this.apiKey = process.env.OPENROUTER_API_KEY || '';
     this.baseUrl = process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1';
-    this.claudeModel = process.env.CLAUDE_MODEL || 'anthropic/claude-3.5-sonnet';
-    this.gpt5Model = process.env.GPT5_MODEL || 'openai/gpt-4o-mini';
-    this.deepseekModel = process.env.DEEPSEEK_MODEL || 'deepseek/deepseek-chat';
+    this.claudeModel = process.env.RESEARCH_CLAUDE_MODEL || process.env.CLAUDE_MODEL || 'anthropic/claude-3.5-sonnet';
+    this.gpt5Model = process.env.RESEARCH_GPT5_MODEL || process.env.GPT5_MODEL || 'openai/gpt-4o-mini';
+    this.deepseekModel = process.env.RESEARCH_DEEPSEEK_MODEL || process.env.DEEPSEEK_MODEL || 'deepseek/deepseek-chat';
 
     if (!this.apiKey) {
       console.warn('⚠️  OpenRouter API key not found. Multi-model analysis will use mock responses.');
@@ -114,6 +114,60 @@ export class OpenRouterService {
   }
 
   /**
+   * Generic method to generate response using any model
+   */
+  async generateResponse(
+    prompt: string, 
+    model: string = 'gpt-4o-mini', 
+    options: {
+      temperature?: number;
+      max_tokens?: number;
+      system_prompt?: string;
+    } = {}
+  ): Promise<string> {
+    if (!this.apiKey) {
+      throw new Error('OpenRouter API key not configured');
+    }
+
+    const messages = [];
+    
+    // Add system prompt if provided
+    if (options.system_prompt) {
+      messages.push({
+        role: 'system',
+        content: options.system_prompt
+      });
+    }
+    
+    // Add user prompt
+    messages.push({
+      role: 'user',
+      content: prompt
+    });
+
+    const response = await axios.post(
+      `${this.baseUrl}/chat/completions`,
+      {
+        model: model,
+        messages: messages,
+        max_tokens: options.max_tokens || 2000,
+        temperature: options.temperature || 0.1
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://claim-validator.local',
+          'X-Title': 'Claim Validator Agent'
+        },
+        timeout: 30000
+      }
+    );
+
+    return response.data.choices[0]?.message?.content || '';
+  }
+
+  /**
    * Execute parallel analysis across all models
    */
   async executeParallelAnalysis(question: string, context?: string): Promise<{
@@ -179,8 +233,8 @@ RISK_ASSESSMENT: [Low/Medium/High risk factors]`;
             content: prompt
           }
         ],
-        max_tokens: 1000,
-        temperature: 0.3
+        max_tokens: parseInt(process.env.RESEARCH_MAX_TOKENS || '2000'),
+        temperature: parseFloat(process.env.RESEARCH_TEMPERATURE || '0.3')
       },
       {
         headers: {

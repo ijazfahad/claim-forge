@@ -256,10 +256,11 @@ Consider all confidence levels, recommendations, and risk factors.
         processing_time: result.metadata.processing_time,
         escalation_reason: result.metadata.escalation_reason,
         recommendations: result.recommendations,
-        firecrawl_data: result.firecrawl_data,
-        multi_model_data: result.multi_model_data,
         question_type: questions[index]?.type || 'unknown',
-        risk_flags: questions[index]?.risk_flags || {}
+        risk_flags: questions[index]?.risk_flags || {},
+        // Include only essential data from multi-model analysis
+        consensus_level: result.multi_model_data?.consensus?.agreement_level || 'unknown',
+        conflicting_models: result.multi_model_data?.consensus?.conflicting_models || []
       })),
       risk_analysis: {
         high_risk_questions: researchResults.filter(r => r.confidence < 0.6).length,

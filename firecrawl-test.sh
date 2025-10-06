@@ -3,9 +3,9 @@
 # Firecrawl v1/extract API request with multiple URLs
 # Based on our updated implementation (FIXED - removed extractorOptions)
 
-curl -X POST http://localhost:3002/v1/extract \
+curl -X POST https://api.firecrawl.dev/v2/extract \
   -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer your_firecrawl_api_key_here' \
+  -H 'Authorization: Bearer fc-0ee0ddd9151b498094fee2c11dd6def8' \
   -d '{
     "urls": [
       "https://www.cms.gov/medicare/payment/fee-schedules/physician",

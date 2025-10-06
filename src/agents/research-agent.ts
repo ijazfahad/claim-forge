@@ -23,6 +23,21 @@ export interface ResearchResult {
     urls_processed: string[];
   };
   multi_model_data?: {
+    claude: {
+      answer: string;
+      confidence: number;
+      reasoning: string;
+    };
+    gpt5: {
+      answer: string;
+      confidence: number;
+      reasoning: string;
+    };
+    deepseek: {
+      answer: string;
+      confidence: number;
+      reasoning: string;
+    };
     individual_confidences: {
       claude: number;
       gpt5: number;
@@ -57,6 +72,21 @@ export interface ConsensusResult {
     conflicting_models: string[];
   };
   multi_model_data?: {
+    claude: {
+      answer: string;
+      confidence: number;
+      reasoning: string;
+    };
+    gpt5: {
+      answer: string;
+      confidence: number;
+      reasoning: string;
+    };
+    deepseek: {
+      answer: string;
+      confidence: number;
+      reasoning: string;
+    };
     individual_confidences: {
       claude: number;
       gpt5: number;
@@ -380,6 +410,21 @@ export class ResearchAgent {
           consensus,
           // Add consolidated data for Evaluator Agent
           multi_model_data: {
+            claude: {
+              answer: parallelResults.claude.answer,
+              confidence: parallelResults.claude.confidence,
+              reasoning: parallelResults.claude.reasoning
+            },
+            gpt5: {
+              answer: parallelResults.gpt5.answer,
+              confidence: parallelResults.gpt5.confidence,
+              reasoning: parallelResults.gpt5.reasoning
+            },
+            deepseek: {
+              answer: parallelResults.deepseek.answer,
+              confidence: parallelResults.deepseek.confidence,
+              reasoning: parallelResults.deepseek.reasoning
+            },
             individual_confidences: {
               claude: parallelResults.claude.confidence,
               gpt5: parallelResults.gpt5.confidence,

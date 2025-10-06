@@ -53,6 +53,21 @@ export class EvaluatorAgentTestSuite {
           escalation_reason: 'Low Firecrawl confidence'
         },
         multi_model_data: {
+          claude: {
+            answer: 'Yes, CPT 99213 is covered under Medicare Part B for established patient office visits.',
+            confidence: 0.9,
+            reasoning: 'Medicare Part B covers established patient office visits with appropriate documentation.'
+          },
+          gpt5: {
+            answer: 'Yes, CPT 99213 is generally covered under Medicare HMO plans.',
+            confidence: 0.85,
+            reasoning: 'Medicare HMO plans typically cover established patient visits with proper authorization.'
+          },
+          deepseek: {
+            answer: 'Yes, CPT 99213 is covered under Medicare Advantage plans.',
+            confidence: 0.9,
+            reasoning: 'Medicare Advantage plans cover established patient office visits per CMS guidelines.'
+          },
           individual_confidences: { claude: 0.9, gpt5: 0.85, deepseek: 0.9 },
           consensus: { final_confidence: 0.88, agreement_level: 'high', conflicting_models: [] },
           answer_previews: {
@@ -77,6 +92,21 @@ export class EvaluatorAgentTestSuite {
           processing_time: 22000
         },
         multi_model_data: {
+          claude: {
+            answer: 'Documentation requirements include chief complaint, history of present illness, review of systems, and medical decision making.',
+            confidence: 0.85,
+            reasoning: 'CMS requires comprehensive documentation for established patient visits.'
+          },
+          gpt5: {
+            answer: 'Proper documentation must include HPI, ROS, and medical decision making.',
+            confidence: 0.8,
+            reasoning: 'Medicare requires detailed documentation for billing purposes.'
+          },
+          deepseek: {
+            answer: 'Documentation should cover CC, HPI, ROS, MDM for established patient visits.',
+            confidence: 0.9,
+            reasoning: 'Complete documentation ensures proper reimbursement and compliance.'
+          },
           individual_confidences: { claude: 0.85, gpt5: 0.8, deepseek: 0.9 },
           consensus: { final_confidence: 0.85, agreement_level: 'high', conflicting_models: [] },
           answer_previews: {
@@ -219,6 +249,21 @@ export class EvaluatorAgentTestSuite {
           processing_time: 20000
         },
         multi_model_data: {
+          claude: {
+            answer: 'Generally covered under Medicare Part B for established patient visits.',
+            confidence: 0.7,
+            reasoning: 'Medicare Part B typically covers established patient visits with appropriate documentation.'
+          },
+          gpt5: {
+            answer: 'Yes, covered with proper documentation and medical necessity.',
+            confidence: 0.8,
+            reasoning: 'Medicare covers established patient visits when properly documented.'
+          },
+          deepseek: {
+            answer: 'Covered under Medicare Part B for established patient office visits.',
+            confidence: 0.75,
+            reasoning: 'Medicare Part B covers established patient visits per CMS guidelines.'
+          },
           individual_confidences: { claude: 0.7, gpt5: 0.8, deepseek: 0.75 },
           consensus: { final_confidence: 0.75, agreement_level: 'medium', conflicting_models: [] },
           answer_previews: {
@@ -242,6 +287,21 @@ export class EvaluatorAgentTestSuite {
           processing_time: 18000
         },
         multi_model_data: {
+          claude: {
+            answer: 'May require prior authorization depending on specific circumstances.',
+            confidence: 0.6,
+            reasoning: 'Prior authorization requirements vary by payer and specific circumstances.'
+          },
+          gpt5: {
+            answer: 'Prior auth typically required for certain procedures.',
+            confidence: 0.7,
+            reasoning: 'Many payers require prior authorization for specific services.'
+          },
+          deepseek: {
+            answer: 'Authorization may be needed based on payer policies.',
+            confidence: 0.65,
+            reasoning: 'Prior authorization depends on individual payer requirements.'
+          },
           individual_confidences: { claude: 0.6, gpt5: 0.7, deepseek: 0.65 },
           consensus: { final_confidence: 0.65, agreement_level: 'medium', conflicting_models: [] },
           answer_previews: {

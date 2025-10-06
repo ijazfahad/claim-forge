@@ -2,6 +2,7 @@ import { BaseAgent } from './base-agent';
 import { Agent } from '@openai/agents';
 import { ClaimPayload } from '../types/claim-types';
 import { SanityCheckResult } from './sanity-check-agent';
+import { PayerDomainMappingService } from '../services/payer-domain-mapping';
 
 export interface ValidationQuestion {
   n: number;
@@ -40,9 +41,11 @@ export interface PlannerResult {
 
 export class PlannerAgent extends BaseAgent {
   private agent: Agent | null = null;
+  private payerDomainService: PayerDomainMappingService;
 
   constructor() {
     super();
+    this.payerDomainService = PayerDomainMappingService.getInstance();
   }
 
   /**
@@ -69,9 +72,13 @@ QUESTION DISTRIBUTION RULES:
 
 FOR EACH QUESTION INCLUDE:
 - accept_if: 2–5 concrete evidence checks (what policy text would count as satisfying the question)
-- search_queries: 1–2 SHORT verification hints (strings). These are NOT executed; they are for future human or automated verification
-  • If payload.domains exists, prefix with site:<domain>. Otherwise, use payer name as a keyword (no quotes)
+- search_queries: 1–2 STRICT site-specific verification queries. These are NOT executed; they are for future human or automated verification
+  • ALWAYS prefix with site:<payer-domain> (e.g., site:aetna.com, site:medicare.gov, site:bcbs.com)
+  • If payer domain is not provided in the mapping, generate your best guess for the payer's official website domain
+  • Include specific CPT codes, ICD codes, and relevant keywords in the query
   • Keep minimal and specific to THIS question; no generic catch-alls
+  • Examples: "site:aetna.com CPT 99213 modifier 25", "site:medicare.gov ICD M54.5 authorization"
+  • For unknown payers, use common patterns like "site:[payer-name].com" or "site:[payer-name].org"
 - risk_flags: object with booleans for { "PA", "POS", "NCCI", "Modifiers", "Frequency", "Diagnosis", "StateSpecific", "LOBSpecific", "Thresholds" } indicating which risk categories the question targets
 
 META:
@@ -96,7 +103,7 @@ OUTPUT SHAPE:
       "type": "basic|specialty|subspecialty",
       "q": "string <=160 chars, atomic, neutral, MUST include specific claim context (CPT codes, ICD codes, payer, state, etc.)",
       "accept_if": ["string", "string"],
-      "search_queries": ["site:domain.tld ..."],      // 0–2 items allowed
+      "search_queries": ["site:aetna.com CPT 99213 modifier 25", "site:aetna.com authorization requirements"],      // 1–2 items, ALWAYS site-specific
       "risk_flags": { "PA": false, "POS": false, "NCCI": false, "Modifiers": false, "Frequency": false, "Diagnosis": false, "StateSpecific": false, "LOBSpecific": false, "Thresholds": false }
     }
   ],
@@ -138,6 +145,11 @@ OUTPUT SHAPE:
     //   return JSON.parse(cached);
     // }
 
+    // Get payer domains for search queries
+    const payerDomains = this.payerDomainService.getDomainsForPayer(payload.payer);
+    const primaryDomain = payerDomains[0] || 'healthcare.gov';
+    const isKnownPayer = payerDomains.length > 0 && payerDomains[0] !== 'healthcare.gov';
+
     const input = `
 Generate validation questions for this medical claim:
 
@@ -147,6 +159,9 @@ Claim Payload:
 - Modifiers: ${(payload.modifiers || []).join(', ') || 'None'}
 - Notes: ${payload.note_summary}
 - Payer: ${payload.payer}
+- Payer Domains: ${payerDomains.join(', ')}
+- Primary Domain: ${primaryDomain}
+- Known Payer: ${isKnownPayer ? 'Yes' : 'No'}
 - Place of Service: ${payload.place_of_service || 'Not specified'}
 - State: ${payload.state || 'Not specified'}
 - Member Plan Type: ${payload.member_plan_type || 'Not specified'}
@@ -182,6 +197,22 @@ ${(() => {
 
 ${sanityResult.policy_check_required ? 'PRIORITY: Generate questions to research medical necessity policies for the specific CPT/ICD combinations.' : ''}
 
+CRITICAL SEARCH QUERY REQUIREMENTS:
+${isKnownPayer ? 
+  `- ALWAYS use site:${primaryDomain} as the prefix for ALL search queries` :
+  `- PAYER NOT IN MAPPING: Generate your best guess for the payer's official website domain
+- Use common patterns like "site:${payload.payer.toLowerCase().replace(/[^a-z0-9]/g, '')}.com" or "site:${payload.payer.toLowerCase().replace(/[^a-z0-9]/g, '')}.org"
+- If payer name has spaces, try variations like "site:${payload.payer.toLowerCase().replace(/\s+/g, '')}.com"`
+}
+- Include specific CPT codes (${payload.cpt_codes.join(', ')}) in search queries
+- Include specific ICD codes (${payload.icd10_codes.join(', ')}) in search queries when relevant
+- Examples of good search queries:
+  * "site:${isKnownPayer ? primaryDomain : payload.payer.toLowerCase().replace(/[^a-z0-9]/g, '') + '.com'} CPT ${payload.cpt_codes[0]} authorization requirements"
+  * "site:${isKnownPayer ? primaryDomain : payload.payer.toLowerCase().replace(/[^a-z0-9]/g, '') + '.com'} ICD ${payload.icd10_codes[0]} medical necessity"
+  * "site:${isKnownPayer ? primaryDomain : payload.payer.toLowerCase().replace(/[^a-z0-9]/g, '') + '.com'} modifier ${(payload.modifiers || [])[0] || '25'} bundling rules"
+- NEVER use generic queries without site: prefix
+- NEVER use quotes around the entire query
+
 Follow the exact output format and question count requirements specified in the instructions.
 `;
 
@@ -191,9 +222,33 @@ Follow the exact output format and question count requirements specified in the 
       // Get questions from result
       const questions = result.questions || [];
       
+      // Post-process questions to ensure strict search queries
+      const processedQuestions = questions.map((question: ValidationQuestion) => {
+        const processedQuestion = { ...question };
+        
+        // Ensure all search queries are site-specific
+        if (processedQuestion.search_queries && processedQuestion.search_queries.length > 0) {
+          processedQuestion.search_queries = processedQuestion.search_queries.map(query => {
+            // If query doesn't start with site:, add the appropriate domain
+            if (!query.toLowerCase().startsWith('site:')) {
+              if (isKnownPayer) {
+                return `site:${primaryDomain} ${query}`;
+              } else {
+                // For unknown payers, generate a domain guess
+                const payerDomainGuess = this.generatePayerDomainGuess(payload.payer);
+                return `site:${payerDomainGuess} ${query}`;
+              }
+            }
+            return query;
+          });
+        }
+        
+        return processedQuestion;
+      });
+      
       // Parse and structure the result
       const plannerResult: PlannerResult = {
-        questions: questions,
+        questions: processedQuestions,
         meta: result.meta || {
           specialty: sanityResult.ssp_prediction.specialty,
           subspecialty: sanityResult.ssp_prediction.subspecialty,
@@ -216,5 +271,29 @@ Follow the exact output format and question count requirements specified in the 
       console.error('Planner Agent error:', error);
       throw new Error(`Planner failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+  }
+
+  /**
+   * Generate a domain guess for unknown payers
+   */
+  private generatePayerDomainGuess(payerName: string): string {
+    // Clean the payer name
+    const cleanName = payerName
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, '') // Remove special characters
+      .replace(/\s+/g, '') // Remove spaces
+      .trim();
+    
+    // Common domain patterns for insurance companies - just hostnames
+    const domainPatterns = [
+      `${cleanName}.com`, // Most likely - main site
+      `${cleanName}.org`, // Non-profit organizations
+      `${cleanName}health.com`, // Health-focused companies
+      `${cleanName}healthcare.com`, // Healthcare-focused companies
+      `${cleanName}insurance.com` // Insurance-focused companies
+    ];
+    
+    // Return the most likely domain (usually .com)
+    return domainPatterns[0];
   }
 }

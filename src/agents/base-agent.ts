@@ -2,6 +2,7 @@ import { Agent, run, Tool } from '@openai/agents';
 import { FirecrawlService } from '../services/firecrawl-service';
 import { GoogleSearchService } from '../services/google-search';
 import { RedisService } from '../services/redis-service';
+import { OpenRouterService } from '../services/openrouter-service';
 import dotenv from 'dotenv';
 
 // Load environment variables
@@ -11,11 +12,13 @@ export abstract class BaseAgent {
   protected firecrawl: FirecrawlService;
   protected googleSearch: GoogleSearchService;
   protected redis: RedisService;
+  protected openRouter: OpenRouterService;
 
   constructor() {
     this.firecrawl = new FirecrawlService();
     this.googleSearch = new GoogleSearchService();
     this.redis = new RedisService();
+    this.openRouter = new OpenRouterService();
   }
 
   /**
@@ -42,12 +45,22 @@ export abstract class BaseAgent {
   }
 
   /**
-   * Execute agent with input
+   * Execute agent with input using OpenRouter
    */
   protected async executeAgent(agent: Agent, input: string): Promise<any> {
     try {
-      const result = await run(agent, input);
-      let responseText = result.finalOutput || '{}';
+      // Use OpenRouter for agent execution instead of direct OpenAI
+      const response = await this.openRouter.generateResponse(
+        input,
+        process.env.BASE_AGENT_MODEL || 'gpt-4o-mini',
+        {
+          temperature: parseFloat(process.env.BASE_AGENT_TEMPERATURE || '0.1'),
+          max_tokens: parseInt(process.env.BASE_AGENT_MAX_TOKENS || '2000'),
+          system_prompt: typeof agent.instructions === 'string' ? agent.instructions : 'You are a helpful AI assistant.'
+        }
+      );
+
+      let responseText = response || '{}';
       
       // Remove markdown code blocks if present
       responseText = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
@@ -60,7 +73,33 @@ export abstract class BaseAgent {
         responseText = responseText.substring(jsonStart, jsonEnd);
       }
       
-      return JSON.parse(responseText);
+      // Try to parse JSON with better error handling
+      try {
+        return JSON.parse(responseText);
+      } catch (parseError) {
+        console.error('JSON parse error:', parseError);
+        console.error('Raw response:', responseText.substring(0, 500) + '...');
+        
+        // Try to fix common JSON issues
+        let fixedText = responseText;
+        
+        // Fix unescaped quotes in string values
+        fixedText = fixedText.replace(/"([^"]*)"([^"]*)"([^"]*)":/g, '"$1\\"$2\\"$3":');
+        fixedText = fixedText.replace(/"([^"]*)"([^"]*)"([^"]*)",/g, '"$1\\"$2\\"$3",');
+        fixedText = fixedText.replace(/"([^"]*)"([^"]*)"([^"]*)"}/g, '"$1\\"$2\\"$3"}');
+        
+        // Try parsing the fixed version
+        try {
+          return JSON.parse(fixedText);
+        } catch (secondError) {
+          console.error('Second JSON parse error:', secondError);
+          // Return a default structure if all parsing fails
+          return {
+            error: 'Failed to parse agent response',
+            raw_response: responseText.substring(0, 200)
+          };
+        }
+      }
     } catch (error) {
       console.error('Error executing agent:', error);
       throw error;
