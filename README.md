@@ -328,9 +328,8 @@ make docker-clean
 
 ## 📚 Documentation
 
-- [Validation Workflow](docs/validation-workflow.md) - Detailed workflow documentation
-- [API Reference](docs/api-reference.md) - Complete API documentation
-- [Agent Patterns](docs/agent-patterns.md) - Agent implementation patterns
+- Reference docs: `docs/reference/README.md` (HTTP API, services, agents, middleware, types, config, examples)
+- Workflow: `docs/validation-workflow.md`
 
 ## 🤝 Contributing
 
