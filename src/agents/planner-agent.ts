@@ -72,13 +72,36 @@ QUESTION DISTRIBUTION RULES:
 
 FOR EACH QUESTION INCLUDE:
 - accept_if: 2–5 concrete evidence checks (what policy text would count as satisfying the question)
-- search_queries: 1–2 STRICT site-specific verification queries. These are NOT executed; they are for future human or automated verification
-  • ALWAYS prefix with site:<payer-domain> (e.g., site:aetna.com, site:medicare.gov, site:bcbs.com)
-  • If payer domain is not provided in the mapping, generate your best guess for the payer's official website domain
-  • Include specific CPT codes, ICD codes, and relevant keywords in the query
-  • Keep minimal and specific to THIS question; no generic catch-alls
-  • Examples: "site:aetna.com CPT 99213 modifier 25", "site:medicare.gov ICD M54.5 authorization"
-  • For unknown payers, use common patterns like "site:[payer-name].com" or "site:[payer-name].org"
+- search_queries: 1–2 STRICT site-specific verification queries using Google dorking techniques
+
+GOOGLE DORKING OPERATORS:
+  • site:{domain} - ALWAYS include as first part (e.g., site:cms.gov, site:aetna.com)
+  • filetype:pdf - Find policy documents
+  • "exact phrases" - Match specific terms exactly
+  • (term1 OR term2) - Multiple options
+
+QUERY PATTERNS BY QUESTION INTENT:
+  • Authorization: site:{domain} filetype:pdf "prior authorization"
+  • Medical Necessity: site:{domain} filetype:pdf "medical necessity"
+  • Bundling/NCCI: site:{domain} filetype:pdf "bundling" OR "ncci"
+  • Coverage: site:{domain} filetype:pdf "coverage determination"
+  • Modifier: site:{domain} filetype:pdf "modifier"
+
+EXAMPLES:
+  • Question: "Does Medicare require prior authorization for this?"
+    Query: site:cms.gov filetype:pdf "prior authorization"
+  
+  • Question: "Are there bundling restrictions?"
+    Query: site:aetna.com filetype:pdf "bundling" OR "ncci"
+  
+  • Question: "What is the medical necessity policy?"
+    Query: site:bcbs.com filetype:pdf "medical necessity"
+
+RULES:
+  • Use site:{domain} + filetype:pdf + "exact phrase"
+  • Use quotes around important terms
+  • Use OR for multiple relevant terms
+  • Keep queries simple and focused
 - risk_flags: object with booleans for { "PA", "POS", "NCCI", "Modifiers", "Frequency", "Diagnosis", "StateSpecific", "LOBSpecific", "Thresholds" } indicating which risk categories the question targets
 
 META:

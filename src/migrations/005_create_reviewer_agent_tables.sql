@@ -24,7 +24,9 @@ CREATE TABLE IF NOT EXISTS claim_forge.reviewer_results (
 -- Create table for storing detected conflicts
 CREATE TABLE IF NOT EXISTS claim_forge.detected_conflicts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    claim_validation_id UUID REFERENCES claim_forge.claim_validations(id) ON DELETE CASCADE,
     reviewer_result_id UUID REFERENCES claim_forge.reviewer_results(id) ON DELETE CASCADE,
+    question_text TEXT NOT NULL,
     conflict_type VARCHAR(20) NOT NULL CHECK (conflict_type IN ('coverage', 'requirements', 'confidence', 'semantic')),
     description TEXT NOT NULL,
     conflicting_sources TEXT[] NOT NULL DEFAULT '{}',
