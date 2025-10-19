@@ -7,6 +7,7 @@ import { EvaluatorAgent, EvaluatorDecision } from '../agents/evaluator-agent';
 import { ClaimStorageService } from './claim-storage-service';
 import { GoogleSearchService } from './google-search';
 import { FirecrawlService } from './firecrawl-service';
+import { AuditLogger } from './audit-logger';
 
 export interface ValidationStepResult {
   step_name: string;
@@ -35,6 +36,7 @@ export class StepByStepValidationWorkflow {
   private googleSearchService: GoogleSearchService;
   private firecrawlService: FirecrawlService;
   private finalReviewerResults: ReviewerResult[] = [];
+  private auditLogger?: AuditLogger;
 
   constructor() {
     this.sanityCheckAgent = new SanityCheckAgent();
@@ -45,6 +47,21 @@ export class StepByStepValidationWorkflow {
     this.claimStorageService = new ClaimStorageService();
     this.googleSearchService = new GoogleSearchService();
     this.firecrawlService = new FirecrawlService();
+  }
+
+  /**
+   * Set audit logger for this workflow instance
+   */
+  setAuditLogger(auditLogger: AuditLogger): void {
+    this.auditLogger = auditLogger;
+    
+    // Set audit logger on all agents and services
+    this.sanityCheckAgent.setAuditLogger(auditLogger);
+    this.plannerAgent.setAuditLogger(auditLogger);
+    this.researchAgent.setAuditLogger(auditLogger);
+    this.conflictResolutionAgent.setAuditLogger(auditLogger);
+    this.evaluatorAgent.setAuditLogger(auditLogger);
+    this.firecrawlService.setAuditLogger(auditLogger);
   }
 
   /**

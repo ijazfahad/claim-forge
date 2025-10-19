@@ -56,7 +56,12 @@ export class EvaluatorAgentTestSuite {
           firecrawl_contribution: 0.0,
           claude_contribution: 0.3,
           gpt5_contribution: 0.3,
-          deepseek_contribution: 0.4
+          deepseek_contribution: 0.4,
+          openai_websearch_contribution: 0.0,
+          sources: {
+            firecrawl_sources: [],
+            openai_websearch_sources: []
+          }
         },
         recommendations: [
           '✅ High confidence - Policy appears well-documented',
@@ -79,7 +84,12 @@ export class EvaluatorAgentTestSuite {
           firecrawl_contribution: 0.0,
           claude_contribution: 0.33,
           gpt5_contribution: 0.33,
-          deepseek_contribution: 0.34
+          deepseek_contribution: 0.34,
+          openai_websearch_contribution: 0.0,
+          sources: {
+            firecrawl_sources: [],
+            openai_websearch_sources: []
+          }
         },
         recommendations: [
           '✅ High confidence - Policy appears well-documented',
@@ -165,7 +175,12 @@ export class EvaluatorAgentTestSuite {
           firecrawl_contribution: 0.0,
           claude_contribution: 0.0,
           gpt5_contribution: 0.0,
-          deepseek_contribution: 0.0
+          deepseek_contribution: 0.0,
+          openai_websearch_contribution: 0.0,
+          sources: {
+            firecrawl_sources: [],
+            openai_websearch_sources: []
+          }
         },
         recommendations: [
           '❌ Research failed - Manual review required',
@@ -239,7 +254,12 @@ export class EvaluatorAgentTestSuite {
           firecrawl_contribution: 0.0,
           claude_contribution: 0.3,
           gpt5_contribution: 0.4,
-          deepseek_contribution: 0.3
+          deepseek_contribution: 0.3,
+          openai_websearch_contribution: 0.0,
+          sources: {
+            firecrawl_sources: [],
+            openai_websearch_sources: []
+          }
         },
         recommendations: [
           '🔍 Moderate confidence - Verify with additional sources',
@@ -267,7 +287,12 @@ export class EvaluatorAgentTestSuite {
           firecrawl_contribution: 0.0,
           claude_contribution: 0.3,
           gpt5_contribution: 0.4,
-          deepseek_contribution: 0.3
+          deepseek_contribution: 0.3,
+          openai_websearch_contribution: 0.0,
+          sources: {
+            firecrawl_sources: [],
+            openai_websearch_sources: []
+          }
         },
         recommendations: [
           '🔍 Moderate confidence - Verify with additional sources',

@@ -2,6 +2,8 @@ import express from 'express';
 import { StepByStepValidationWorkflow } from '../services/step-by-step-validation-workflow';
 import { ClaimPayload } from '../types/claim-types';
 import { ClaimStorageService } from '../services/claim-storage-service';
+import { AuditLogger } from '../services/audit-logger';
+import { Pool } from 'pg';
 import crypto from 'crypto';
 
 const router = express.Router();
@@ -31,6 +33,14 @@ router.post('/validate-claim', async (req, res) => {
     console.log('='.repeat(80));
     console.log('📋 Claim Payload:', JSON.stringify(payload, null, 2));
     console.log('🆔 Generated Claim ID:', claimId);
+    
+    // Initialize audit logging
+    const pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+    });
+    const auditLogger = AuditLogger.createSession(pool);
+    console.log('📋 Audit Session ID:', auditLogger.getSessionId());
+    
     const claimStorageService = new ClaimStorageService();
     
     let claimValidationId: string;
@@ -44,6 +54,7 @@ router.post('/validate-claim', async (req, res) => {
     }
 
     const workflow = new StepByStepValidationWorkflow();
+    workflow.setAuditLogger(auditLogger);
 
     // Send initial status
     sendSSE(res, {

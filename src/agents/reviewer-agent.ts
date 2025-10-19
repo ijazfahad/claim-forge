@@ -18,6 +18,20 @@ export interface ReviewerResult {
     claude_contribution: number;
     gpt5_contribution: number;
     deepseek_contribution: number;
+    openai_websearch_contribution: number;
+    sources: {
+      firecrawl_sources?: Array<{
+        url: string;
+        title: string;
+        content_length: number;
+        confidence: number;
+      }>;
+      openai_websearch_sources?: Array<{
+        title: string;
+        url: string;
+        snippet: string;
+      }>;
+    };
   };
   recommendations: string[];
   processing_time_ms: number;
@@ -40,7 +54,7 @@ export class ReviewerAgent extends BaseAgent {
   async initialize(): Promise<void> {
     const instructions = `You are a Reviewer Agent specializing in medical claim validation research analysis.
 
-Your role is to review and analyze research results from multiple sources (Firecrawl, Claude, GPT-5, DeepSeek) and provide a comprehensive, confident answer. You review all sources for quality, accuracy, and consistency, resolving any conflicts when they occur.
+Your role is to review and analyze research results from multiple sources (Firecrawl, Claude, GPT-5, DeepSeek, OpenAI Web Search) and provide a comprehensive, confident answer. You review all sources for quality, accuracy, and consistency, resolving any conflicts when they occur.
 
 REVIEW STRATEGIES:
 1. **Comprehensive Analysis**: Review all sources for quality and relevance
@@ -78,7 +92,12 @@ OUTPUT FORMAT:
     "firecrawl_contribution": number (0-1) - How much Firecrawl contributed,
     "claude_contribution": number (0-1) - How much Claude contributed,
     "gpt5_contribution": number (0-1) - How much GPT-5 contributed,
-    "deepseek_contribution": number (0-1) - How much DeepSeek contributed
+    "deepseek_contribution": number (0-1) - How much DeepSeek contributed,
+    "openai_websearch_contribution": number (0-1) - How much OpenAI Web Search contributed,
+    "sources": {
+      "firecrawl_sources": [{"url": "string", "title": "string", "content_length": number, "confidence": number}],
+      "openai_websearch_sources": [{"title": "string", "url": "string", "snippet": "string"}]
+    }
   },
   "recommendations": ["string"] - Actionable recommendations
 }
@@ -109,9 +128,11 @@ ANALYSIS CRITERIA:
 
     const reviewedResults: ReviewerResult[] = [];
 
-    console.log(`\n🔍 REVIEWER AGENT: Starting review of ${researchResults.length} research result(s)`);
+    console.log(`\n${'='.repeat(80)}`);
+    console.log(`🔍 REVIEWER AGENT: Starting review of ${researchResults.length} research result(s)`);
     console.log('🎯 Goal: Detect conflicts and provide unified answers');
-    console.log('📊 Input: Research results from Firecrawl + Multi-Model analysis');
+    console.log('📊 Input: Research results from Firecrawl + Multi-Model + OpenAI Web Search');
+    console.log(`${'='.repeat(80)}`);
 
     for (let i = 0; i < researchResults.length; i++) {
       const result = researchResults[i];
@@ -141,16 +162,33 @@ ANALYSIS CRITERIA:
         if (reviewInput.individual_model_results) {
           console.log(`   🤖 Multi-Model Results:`);
           if (reviewInput.individual_model_results.claude) {
-            console.log(`      🧠 Claude: ${(reviewInput.individual_model_results.claude.confidence * 100).toFixed(1)}%`);
+            console.log(`      🧠 Claude (${(reviewInput.individual_model_results.claude.confidence * 100).toFixed(1)}%): "${reviewInput.individual_model_results.claude.answer.substring(0, 100)}${reviewInput.individual_model_results.claude.answer.length > 100 ? '...' : ''}"`);
           }
           if (reviewInput.individual_model_results.gpt5) {
-            console.log(`      🤖 GPT-5: ${(reviewInput.individual_model_results.gpt5.confidence * 100).toFixed(1)}%`);
+            console.log(`      🤖 GPT-5 (${(reviewInput.individual_model_results.gpt5.confidence * 100).toFixed(1)}%): "${reviewInput.individual_model_results.gpt5.answer.substring(0, 100)}${reviewInput.individual_model_results.gpt5.answer.length > 100 ? '...' : ''}"`);
           }
           if (reviewInput.individual_model_results.deepseek) {
-            console.log(`      🎯 DeepSeek: ${(reviewInput.individual_model_results.deepseek.confidence * 100).toFixed(1)}%`);
+            console.log(`      🎯 DeepSeek (${(reviewInput.individual_model_results.deepseek.confidence * 100).toFixed(1)}%): "${reviewInput.individual_model_results.deepseek.answer.substring(0, 100)}${reviewInput.individual_model_results.deepseek.answer.length > 100 ? '...' : ''}"`);
           }
         } else {
           console.log(`   🤖 Multi-Model Results: Not available`);
+        }
+        
+        if (reviewInput.openai_websearch_result) {
+          console.log(`   🔍 OpenAI Web Search Result:`);
+          console.log(`      📊 Confidence: ${(reviewInput.openai_websearch_result.confidence * 100).toFixed(1)}%`);
+          console.log(`      📝 Answer: "${reviewInput.openai_websearch_result.answer.substring(0, 150)}${reviewInput.openai_websearch_result.answer.length > 150 ? '...' : ''}"`);
+          console.log(`      🔗 Sources Found: ${reviewInput.openai_websearch_result.sources?.length || 0}`);
+          if (reviewInput.openai_websearch_result.sources?.length > 0) {
+            // Show only the first source to keep logging clean
+            const firstSource = reviewInput.openai_websearch_result.sources[0];
+            console.log(`         📄 Sample Source: ${firstSource.title} (${firstSource.url})`);
+            if (reviewInput.openai_websearch_result.sources.length > 1) {
+              console.log(`         ... and ${reviewInput.openai_websearch_result.sources.length - 1} more sources`);
+            }
+          }
+        } else {
+          console.log(`   🔍 OpenAI Web Search Result: Not available`);
         }
         
         const input = `
@@ -164,12 +202,13 @@ RAW RESEARCH DATA:
 ${JSON.stringify(reviewInput, null, 2)}
 
 ANALYSIS INSTRUCTIONS:
-1. **Compare Individual Results**: Look at Firecrawl result vs individual model results (Claude, GPT-5, DeepSeek)
+1. **Compare Individual Results**: Look at Firecrawl result vs individual model results (Claude, GPT-5, DeepSeek) vs OpenAI Web Search result
 2. **Detect Conflicts**: Identify any contradictions between sources
 3. **Semantic Analysis**: Consider if different phrasings mean the same thing
 4. **Confidence Weighting**: Give more weight to higher confidence sources
-5. **Source Quality**: Consider reliability of each source
+5. **Source Quality**: Consider reliability of each source (web sources vs LLM knowledge)
 6. **Provide Unified Answer**: Synthesize the best answer from all sources
+7. **Include Sources**: Extract and include specific sources from Firecrawl URLs and OpenAI Web Search results
 
 CONFLICT DETECTION EXAMPLES:
 - Coverage: "Covered" vs "Not covered" = CONFLICT
@@ -198,12 +237,7 @@ Perform comprehensive review and provide a unified answer.
             resolution_strategy: 'No conflicts detected',
             confidence_adjustment: 0
           },
-          source_analysis: reviewResult.source_analysis || {
-            firecrawl_contribution: 0,
-            claude_contribution: 0,
-            gpt5_contribution: 0,
-            deepseek_contribution: 0
-          },
+          source_analysis: this.extractSourceAnalysis(reviewResult.source_analysis, result),
           recommendations: reviewResult.recommendations || [],
           processing_time_ms: processingTime
         };
@@ -222,6 +256,22 @@ Perform comprehensive review and provide a unified answer.
         console.log(`   🧠 Claude: ${(reviewedResult.source_analysis.claude_contribution * 100).toFixed(1)}%`);
         console.log(`   🤖 GPT-5: ${(reviewedResult.source_analysis.gpt5_contribution * 100).toFixed(1)}%`);
         console.log(`   🎯 DeepSeek: ${(reviewedResult.source_analysis.deepseek_contribution * 100).toFixed(1)}%`);
+        console.log(`   🔍 OpenAI Web Search: ${(reviewedResult.source_analysis.openai_websearch_contribution * 100).toFixed(1)}%`);
+        
+        // Log sources
+        if (reviewedResult.source_analysis.sources?.firecrawl_sources && reviewedResult.source_analysis.sources.firecrawl_sources.length > 0) {
+          console.log(`\n🔥 FIRECRAWL SOURCES:`);
+          reviewedResult.source_analysis.sources.firecrawl_sources.forEach((source, idx) => {
+            console.log(`   ${idx + 1}. ${source.title} (${source.url})`);
+          });
+        }
+        
+        if (reviewedResult.source_analysis.sources?.openai_websearch_sources && reviewedResult.source_analysis.sources.openai_websearch_sources.length > 0) {
+          console.log(`\n🔍 OPENAI WEB SEARCH SOURCES:`);
+          reviewedResult.source_analysis.sources.openai_websearch_sources.forEach((source, idx) => {
+            console.log(`   ${idx + 1}. ${source.title} (${source.url})`);
+          });
+        }
         
         if (reviewedResult.review_analysis.detected_conflicts.length > 0) {
           console.log(`\n⚠️  DETECTED CONFLICTS:`);
@@ -268,10 +318,12 @@ Perform comprehensive review and provide a unified answer.
             confidence_adjustment: -0.2
           },
           source_analysis: {
-            firecrawl_contribution: 0.25,
-            claude_contribution: 0.25,
-            gpt5_contribution: 0.25,
-            deepseek_contribution: 0.25
+            firecrawl_contribution: 0.2,
+            claude_contribution: 0.2,
+            gpt5_contribution: 0.2,
+            deepseek_contribution: 0.2,
+            openai_websearch_contribution: 0.2,
+            sources: {}
           },
           recommendations: ['Manual review required due to review failure'],
           processing_time_ms: Date.now() - startTime
@@ -312,6 +364,10 @@ Perform comprehensive review and provide a unified answer.
     
     const totalProcessingTime = reviewedResults.reduce((sum, result) => sum + result.processing_time_ms, 0);
     console.log(`⏱️  Total Processing Time: ${totalProcessingTime}ms`);
+    
+    console.log(`\n${'='.repeat(80)}`);
+    console.log(`✅ REVIEWER AGENT COMPLETED - PASSING TO EVALUATOR AGENT`);
+    console.log(`${'='.repeat(80)}\n`);
 
     return reviewedResults;
   }
@@ -369,6 +425,18 @@ Perform comprehensive review and provide a unified answer.
       input.multi_model_consensus = result.multi_model_data.consensus;
     }
 
+    // Add OpenAI Web Search result if available
+    if (result.openai_websearch_data) {
+      input.openai_websearch_result = {
+        answer: result.openai_websearch_data.answer,
+        confidence: result.openai_websearch_data.confidence,
+        sources: result.openai_websearch_data.sources,
+        reasoning: result.openai_websearch_data.reasoning,
+        search_query: result.openai_websearch_data.search_query,
+        processing_time_ms: result.openai_websearch_data.processing_time_ms
+      };
+    }
+
     return input;
   }
 
@@ -390,5 +458,53 @@ Perform comprehensive review and provide a unified answer.
     if (content.length > 200) return 0.6;
     if (content.length > 50) return 0.4;
     return 0.2;
+  }
+
+  /**
+   * Extract and structure source analysis from LLM response and research results
+   */
+  private extractSourceAnalysis(llmSourceAnalysis: any, researchResult: ResearchResult): any {
+    // Default source analysis
+    const sourceAnalysis: any = {
+      firecrawl_contribution: 0,
+      claude_contribution: 0,
+      gpt5_contribution: 0,
+      deepseek_contribution: 0,
+      openai_websearch_contribution: 0,
+      sources: {
+        firecrawl_sources: [] as any[],
+        openai_websearch_sources: [] as any[]
+      }
+    };
+
+    // Use LLM analysis if available, otherwise calculate from research result
+    if (llmSourceAnalysis) {
+      sourceAnalysis.firecrawl_contribution = llmSourceAnalysis.firecrawl_contribution || 0;
+      sourceAnalysis.claude_contribution = llmSourceAnalysis.claude_contribution || 0;
+      sourceAnalysis.gpt5_contribution = llmSourceAnalysis.gpt5_contribution || 0;
+      sourceAnalysis.deepseek_contribution = llmSourceAnalysis.deepseek_contribution || 0;
+      sourceAnalysis.openai_websearch_contribution = llmSourceAnalysis.openai_websearch_contribution || 0;
+      
+      // Extract sources from LLM response if available
+      if (llmSourceAnalysis.sources) {
+        sourceAnalysis.sources = llmSourceAnalysis.sources;
+      }
+    }
+
+    // Extract sources from research result data
+    if (researchResult.firecrawl_data?.urls_processed) {
+      sourceAnalysis.sources.firecrawl_sources = researchResult.firecrawl_data.urls_processed.map((url: string) => ({
+        url,
+        title: `Firecrawl Source - ${url}`,
+        content_length: researchResult.firecrawl_data?.content_length || 0,
+        confidence: researchResult.firecrawl_data?.confidence || 0
+      }));
+    }
+
+    if (researchResult.openai_websearch_data?.sources) {
+      sourceAnalysis.sources.openai_websearch_sources = [...researchResult.openai_websearch_data.sources];
+    }
+
+    return sourceAnalysis;
   }
 }

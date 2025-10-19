@@ -1,6 +1,8 @@
 import { OpenRouterService } from '../services/openrouter-service';
 import { FirecrawlService } from '../services/firecrawl-service';
 import { GoogleSearchAgent } from './google-search-agent';
+import { OpenAIWebSearchService } from '../services/openai-websearch-service';
+import { AuditLogger } from '../services/audit-logger';
 import { ValidationQuestion } from './planner-agent';
 import { IndividualResearchResult, ConflictInfo, EnhancedResearchResult, PolicyReference } from '../types/claim-types';
 
@@ -10,7 +12,7 @@ export interface ResearchResult {
   confidence: number;
   source: string;
   metadata: {
-    extraction_method: 'firecrawl' | 'multi-model' | 'enhanced-analysis';
+    extraction_method: 'firecrawl' | 'multi-model' | 'enhanced-analysis' | 'openai-websearch' | 'multi-source';
     processing_time: number;
     escalation_reason?: string;
     structured_data?: any;
@@ -53,6 +55,18 @@ export interface ResearchResult {
       gpt5: string;
       deepseek: string;
     };
+  };
+  openai_websearch_data?: {
+    answer: string;
+    confidence: number;
+    sources: Array<{
+      title: string;
+      url: string;
+      snippet: string;
+    }>;
+    reasoning: string;
+    search_query: string;
+    processing_time_ms: number;
   };
   recommendations: string[];
   enhanced_analysis?: EnhancedResearchResult;
@@ -111,11 +125,24 @@ export class ResearchAgent {
   private firecrawl: FirecrawlService;
   private googleSearch: GoogleSearchAgent;
   private openRouter: OpenRouterService;
+  private openaiWebSearch: OpenAIWebSearchService;
+  private auditLogger?: AuditLogger;
 
   constructor() {
     this.firecrawl = new FirecrawlService();
     this.googleSearch = new GoogleSearchAgent();
     this.openRouter = new OpenRouterService();
+    this.openaiWebSearch = new OpenAIWebSearchService();
+  }
+
+  /**
+   * Set audit logger for this agent instance
+   */
+  setAuditLogger(auditLogger: AuditLogger): void {
+    this.auditLogger = auditLogger;
+    // Pass audit logger to services
+    this.firecrawl.setAuditLogger(auditLogger);
+    this.openaiWebSearch.setAuditLogger(auditLogger);
   }
 
   /**
@@ -159,6 +186,7 @@ export class ResearchAgent {
         console.log(`\n🚀 STEP 2: Parallel Analysis`);
         const promises: Promise<any>[] = [
           this.executeMultiModelAnalysis([question])
+          // OpenAI Web Search removed - too expensive (searches 20-24 URLs per question)
         ];
         
         // Only add Firecrawl if we have URLs
@@ -173,7 +201,7 @@ export class ResearchAgent {
         const firecrawlResult = hasUrls ? results_array[1] : [];
 
         // Combine raw results - let Reviewer Agent handle conflict detection
-        const combinedResult = this.combineRawResults(firecrawlResult, multiModelResult, question, startTime);
+        const combinedResult = this.combineRawResults(firecrawlResult, multiModelResult, [], question, startTime);
         
         if (combinedResult) {
           results.push(combinedResult);
@@ -232,6 +260,37 @@ export class ResearchAgent {
     console.log(`🤖 Multi-Model Successes: ${multiModelSuccessCount}`);
     console.log(`📈 Success Rate: ${((firecrawlSuccessCount + multiModelSuccessCount) / questions.length * 100).toFixed(1)}%`);
     console.log(`⏱️  Total Processing Time: ${Date.now() - startTime}ms`);
+    
+    // Log Research Agent execution to audit system
+    if (this.auditLogger) {
+      await this.auditLogger.logAuditEvent(
+        'research',
+        'ResearchAgent',
+        'execute_research',
+        { 
+          questions_count: questions.length,
+          firecrawl_successes: firecrawlSuccessCount,
+          multi_model_successes: multiModelSuccessCount
+        },
+        { 
+          total_results: results.length,
+          success_rate: ((firecrawlSuccessCount + multiModelSuccessCount) / questions.length * 100).toFixed(1) + '%',
+          processing_time_ms: Date.now() - startTime
+        },
+        { 
+          strategy: 'Parallel Firecrawl + Multi-Model analysis',
+          results_summary: results.map(r => ({
+            question: r.question.substring(0, 50) + '...',
+            confidence: r.confidence,
+            source: r.source
+          }))
+        },
+        Date.now() - startTime,
+        true,
+        undefined,
+        undefined
+      );
+    }
     
     return results;
   }
@@ -475,6 +534,146 @@ export class ResearchAgent {
   }
 
   /**
+   * Extract domains from search queries (e.g., "site:cms.gov" -> "cms.gov")
+   */
+  private extractDomainsFromQueries(searchQueries: string[]): string[] {
+    const domains: string[] = [];
+    
+    for (const query of searchQueries) {
+      // Look for site:domain patterns
+      const siteMatches = query.match(/site:([a-zA-Z0-9.-]+)/g);
+      if (siteMatches) {
+        siteMatches.forEach(match => {
+          const domain = match.replace('site:', '');
+          if (!domains.includes(domain)) {
+            domains.push(domain);
+          }
+        });
+      }
+    }
+    
+    return domains;
+  }
+
+  /**
+   * Execute OpenAI web search analysis
+   */
+  async executeOpenAIWebSearch(questions: ValidationQuestion[], claimId?: string): Promise<any[]> {
+    const results: any[] = [];
+    const startTime = Date.now();
+
+    for (const question of questions) {
+      try {
+        console.log(`\n🔍 OpenAI Web Search for: ${question.q}`);
+        
+        // Extract domains from search queries
+        const domains = this.extractDomainsFromQueries(question.search_queries);
+        console.log(`   🎯 Target domains: ${domains.length > 0 ? domains.join(', ') : 'Using default domains'}`);
+        
+        const openaiResult = await this.openaiWebSearch.searchMedicalCoding(question.q, domains, claimId);
+        
+        if (openaiResult.success && openaiResult.data) {
+          const result = {
+            question: question.q,
+            answer: openaiResult.data.answer,
+            confidence: openaiResult.data.confidence,
+            source: 'OpenAI Web Search',
+            metadata: {
+              extraction_method: 'openai-websearch',
+              processing_time: Date.now() - startTime,
+              escalation_reason: 'OpenAI web search analysis'
+            },
+            openai_websearch_data: {
+              answer: openaiResult.data.answer,
+              confidence: openaiResult.data.confidence,
+              sources: openaiResult.data.sources,
+              reasoning: openaiResult.data.reasoning,
+              search_query: openaiResult.data.search_query,
+              processing_time_ms: Date.now() - startTime
+            },
+            recommendations: this.generateOpenAIRecommendations(question, openaiResult.data)
+          };
+          
+          results.push(result);
+          
+          console.log(`✅ OpenAI Web Search completed`);
+          console.log(`   📊 Confidence: ${(openaiResult.data.confidence * 100).toFixed(1)}%`);
+          console.log(`   🔗 Sources: ${openaiResult.data.sources.length}`);
+          console.log(`   📝 Answer preview: ${openaiResult.data.answer.substring(0, 100)}...`);
+        } else {
+          console.log(`❌ OpenAI Web Search failed: ${openaiResult.error}`);
+          // Add fallback result
+          results.push({
+            question: question.q,
+            answer: 'OpenAI web search failed to find relevant information.',
+            confidence: 0.1,
+            source: 'OpenAI Web Search (Failed)',
+            metadata: {
+              extraction_method: 'openai-websearch',
+              processing_time: Date.now() - startTime,
+              escalation_reason: 'OpenAI web search failed'
+            },
+            recommendations: ['❌ OpenAI web search failed - Manual review required']
+          });
+        }
+      } catch (error) {
+        console.error(`OpenAI web search failed for: ${question.q}`, error);
+        // Add error result
+        results.push({
+          question: question.q,
+          answer: 'Error occurred during OpenAI web search.',
+          confidence: 0.1,
+          source: 'OpenAI Web Search (Error)',
+          metadata: {
+            extraction_method: 'openai-websearch',
+            processing_time: Date.now() - startTime,
+            escalation_reason: 'OpenAI web search error'
+          },
+          recommendations: ['❌ OpenAI web search error - Manual review required']
+        });
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Generate recommendations based on OpenAI web search results
+   */
+  private generateOpenAIRecommendations(question: ValidationQuestion, openaiData: any): string[] {
+    const recommendations: string[] = [];
+    
+    // Confidence-based recommendations
+    if (openaiData.confidence < 0.6) {
+      recommendations.push('⚠️ Low confidence from OpenAI web search - Consider manual review');
+    } else if (openaiData.confidence < 0.8) {
+      recommendations.push('🔍 Moderate confidence from OpenAI web search - Verify with additional sources');
+    } else {
+      recommendations.push('✅ High confidence from OpenAI web search - Good source reliability');
+    }
+    
+    // Source-based recommendations
+    if (openaiData.sources.length === 0) {
+      recommendations.push('📝 No specific sources cited - Verify information independently');
+    } else if (openaiData.sources.length > 0) {
+      recommendations.push(`🔗 ${openaiData.sources.length} source(s) found - Review cited sources for verification`);
+    }
+    
+    // Question-type specific recommendations
+    if (question.risk_flags.PA) {
+      recommendations.push('📋 Prior authorization flagged - Verify PA requirements with payer');
+    }
+    if (question.risk_flags.StateSpecific) {
+      recommendations.push('🗺️ State-specific policy - Confirm state regulations');
+    }
+    if (question.risk_flags.LOBSpecific) {
+      recommendations.push('🏥 Line of business specific - Verify LOB coverage rules');
+    }
+    
+    return recommendations;
+  }
+
+  /**
    * Generate recommendations based on research results
    */
   private generateRecommendations(
@@ -526,72 +725,46 @@ export class ResearchAgent {
   }
 
   /**
-   * Combine raw results from Firecrawl and Multi-Model analysis
+   * Combine raw results from Firecrawl, Multi-Model, and OpenAI Web Search analysis
    * Let Reviewer Agent handle conflict detection and resolution
    */
-  combineRawResults(firecrawlResult: ResearchResult[], multiModelResult: any[], question: ValidationQuestion, startTime: number): ResearchResult | null {
+  combineRawResults(firecrawlResult: ResearchResult[], multiModelResult: any[], openaiWebSearchResult: any[], question: ValidationQuestion, startTime: number): ResearchResult | null {
     const firecrawl = firecrawlResult.length > 0 ? firecrawlResult[0] : null;
     const multiModel = multiModelResult.length > 0 ? multiModelResult[0] : null;
+    const openaiWebSearch = openaiWebSearchResult.length > 0 ? openaiWebSearchResult[0] : null;
 
-    // If neither result is available
-    if (!firecrawl && !multiModel) {
-      console.log(`   ❌ No results from either method`);
+    // If no results are available
+    if (!firecrawl && !multiModel && !openaiWebSearch) {
+      console.log(`   ❌ No results from any method`);
       return null;
     }
 
-    // Simple combination - just use the highest confidence result
-    // Let Reviewer Agent handle all conflict detection and resolution
-    let bestResult: ResearchResult;
-    let source: string;
-
-    if (firecrawl && multiModel) {
-      // Both available - use the one with higher confidence
-      if (firecrawl.confidence >= multiModel.consensus?.confidence || 0) {
-        bestResult = firecrawl;
-        source = 'Firecrawl (Higher Confidence)';
-      } else {
-        // Convert multi-model to ResearchResult format
-        bestResult = {
-          question: question.q,
-          answer: multiModel.consensus?.final_answer || 'No consensus answer available',
-          confidence: multiModel.consensus?.confidence || 0.5,
-          source: 'Multi-Model Consensus',
-          metadata: {
-            extraction_method: 'multi-model',
-            processing_time: Date.now() - startTime,
-            escalation_reason: 'Multi-model consensus used'
-          },
-          multi_model_data: multiModel.multi_model_data,
-          recommendations: multiModel.recommendations || []
-        };
-        source = 'Multi-Model (Higher Confidence)';
-      }
-    } else if (firecrawl) {
-      bestResult = firecrawl;
-      source = 'Firecrawl Only';
-    } else {
-      // Convert multi-model to ResearchResult format
-      bestResult = {
-        question: question.q,
-        answer: multiModel.consensus?.final_answer || 'No consensus answer available',
-        confidence: multiModel.consensus?.confidence || 0.5,
-        source: 'Multi-Model Only',
-        metadata: {
-          extraction_method: 'multi-model',
-          processing_time: Date.now() - startTime,
-          escalation_reason: 'Multi-model only available'
-        },
-        multi_model_data: multiModel.multi_model_data,
-        recommendations: multiModel.recommendations || []
-      };
-      source = 'Multi-Model Only';
+    // Don't pick a "best" result - let Reviewer Agent handle all conflict detection and resolution
+    // Just create a comprehensive result that includes all available data for the Reviewer Agent
+    
+    // Use the first available result as the base, but include ALL data sources
+    const baseResult = firecrawl || multiModel || openaiWebSearch;
+    if (!baseResult) {
+      console.log(`   ❌ No valid result found`);
+      return null;
     }
 
-    // Add both firecrawl and multi-model data for Reviewer Agent
+    // Create a comprehensive result that includes all available data sources
     const combinedResult: ResearchResult = {
-      ...bestResult,
-      source: source,
-      // Include both datasets for Reviewer Agent analysis
+      question: question.q,
+      answer: firecrawl?.answer || multiModel?.consensus?.final_answer || openaiWebSearch?.answer || 'No answer available',
+      confidence: Math.max(
+        firecrawl?.confidence || 0,
+        multiModel?.consensus?.confidence || 0,
+        openaiWebSearch?.confidence || 0
+      ),
+      source: 'Multiple Sources (Reviewer Agent will analyze)',
+      metadata: {
+        extraction_method: 'multi-source',
+        processing_time: Date.now() - startTime,
+        escalation_reason: 'All sources combined for Reviewer Agent analysis'
+      },
+      // Include ALL available data sources for Reviewer Agent
       firecrawl_data: firecrawl ? {
         confidence: firecrawl.confidence,
         content_length: firecrawl.answer.length,
@@ -599,28 +772,51 @@ export class ResearchAgent {
         urls_processed: firecrawl.firecrawl_data?.urls_processed || []
       } : undefined,
       multi_model_data: multiModel?.multi_model_data,
-      metadata: {
-        ...bestResult.metadata,
-        extraction_method: 'multi-model',
-        escalation_reason: 'Raw results combined for Reviewer Agent analysis'
-      }
+      openai_websearch_data: openaiWebSearch?.openai_websearch_data,
+      recommendations: [
+        ...(firecrawl?.recommendations || []),
+        ...(multiModel?.recommendations || []),
+        ...(openaiWebSearch?.recommendations || [])
+      ]
     };
 
-    console.log(`   📊 Raw Results Combined:`);
-    console.log(`      🔥 Firecrawl: ${firecrawl ? `${(firecrawl.confidence * 100).toFixed(1)}%` : 'Not available'}`);
-    console.log(`      🤖 Multi-Model: ${multiModel ? `${((multiModel.consensus?.confidence || 0) * 100).toFixed(1)}%` : 'Not available'}`);
-    console.log(`      🎯 Selected: ${source} (${(combinedResult.confidence * 100).toFixed(1)}%)`);
-    console.log(`      📝 Answer preview: "${combinedResult.answer.substring(0, 100)}${combinedResult.answer.length > 100 ? '...' : ''}"`);
+    console.log(`\n${'='.repeat(60)}`);
+    console.log(`📊 RESEARCH AGENT RESULTS (Passing to Reviewer Agent)`);
+    console.log(`${'='.repeat(60)}`);
+    
+    if (firecrawl) {
+      console.log(`🔥 FIRECRAWL (${(firecrawl.confidence * 100).toFixed(1)}% confidence):`);
+      console.log(`   📝 Answer: "${firecrawl.answer.substring(0, 150)}${firecrawl.answer.length > 150 ? '...' : ''}"`);
+    } else {
+      console.log(`🔥 FIRECRAWL: Not available`);
+    }
+    
+    if (multiModel) {
+      console.log(`🤖 MULTI-MODEL (${((multiModel.consensus?.confidence || 0) * 100).toFixed(1)}% confidence):`);
+      console.log(`   📝 Answer: "${(multiModel.consensus?.final_answer || 'No consensus answer').substring(0, 150)}${(multiModel.consensus?.final_answer || '').length > 150 ? '...' : ''}"`);
+    } else {
+      console.log(`🤖 MULTI-MODEL: Not available`);
+    }
+    
+    if (openaiWebSearch) {
+      console.log(`🔍 OPENAI WEB SEARCH (${(openaiWebSearch.confidence * 100).toFixed(1)}% confidence):`);
+      console.log(`   📝 Answer: "${(openaiWebSearch.answer || 'No answer').substring(0, 150)}${(openaiWebSearch.answer || '').length > 150 ? '...' : ''}"`);
+    } else {
+      console.log(`🔍 OPENAI WEB SEARCH: Not available`);
+    }
+    
+    console.log(`\n🎯 PASSING ALL DATA TO REVIEWER AGENT FOR CONFLICT ANALYSIS`);
+    console.log(`${'='.repeat(60)}\n`);
 
     return combinedResult;
   }
 
   /**
-   * Select the best result from Firecrawl and Multi-Model analysis
+   * Select the best result from Firecrawl, Multi-Model, and OpenAI Web Search analysis
    * Simplified approach - let Reviewer Agent handle conflict detection
    */
-  selectBestResult(firecrawlResult: ResearchResult[], multiModelResult: any[], question: ValidationQuestion, startTime: number): ResearchResult | null {
-    return this.combineRawResults(firecrawlResult, multiModelResult, question, startTime);
+  selectBestResult(firecrawlResult: ResearchResult[], multiModelResult: any[], openaiWebSearchResult: any[], question: ValidationQuestion, startTime: number): ResearchResult | null {
+    return this.combineRawResults(firecrawlResult, multiModelResult, openaiWebSearchResult, question, startTime);
   }
 
   /**

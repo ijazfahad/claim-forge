@@ -1,23 +1,6 @@
 # version: '3.8' # Removed obsolete version attribute
 
 services:
-  # Redis service for Claim Validator
-  # claim-validator-redis:
-  #   image: redis:7-alpine
-  #   container_name: claim-validator-redis
-  #   restart: unless-stopped
-  #   ports:
-  #     - "6380:6379"  # Use different port to avoid conflict with Firecrawl Redis
-  #   volumes:
-  #     - claim_validator_redis_data:/data
-  #   command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-claimvalidator123}
-  #   healthcheck:
-  #     test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
-  #     interval: 30s
-  #     timeout: 3s
-  #     retries: 5
-  #   networks:
-  #     - claim-validator-network
 
   # PostgreSQL database service
   postgres:
@@ -58,16 +41,12 @@ services:
       - PORT=3000
       - DATABASE_URL=${DATABASE_URL}
       - PGSSLMODE=disable
-      - REDIS_URL=${REDIS_URL}
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-claimvalidator123}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - GOOGLE_SEARCH_API_KEY=${GOOGLE_SEARCH_API_KEY}
       - GOOGLE_SEARCH_ENGINE_ID=${GOOGLE_SEARCH_ENGINE_ID}
       - FIRECRAWL_API_KEY=${FIRECRAWL_API_KEY}
       - FIRECRAWL_API_URL=${FIRECRAWL_API_URL:-http://host.docker.internal:3002}
     depends_on:
-      # claim-validator-redis:
-      #   condition: service_healthy
       postgres:
         condition: service_healthy
     healthcheck:
@@ -78,8 +57,6 @@ services:
       start_period: 40s
     networks:
       - claim-validator-network
-    volumes:
-      - ./logs:/app/logs
 
   # Nginx reverse proxy (optional)
   nginx:
@@ -99,8 +76,6 @@ services:
       - claim-validator-network
 
 volumes:
-  claim_validator_redis_data:
-    driver: local
   postgres_data:
     driver: local
 

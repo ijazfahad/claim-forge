@@ -19,9 +19,6 @@ export interface ClaimValidationRecord {
   question_analysis: any[];
   overall_assessment: any;
   insurance_insights: any;
-  research_results: ResearchResult[];
-  planner_questions: ValidationQuestion[];
-  sanity_check_results: SanityCheckResult;
   created_at: Date;
   updated_at: Date;
 }
@@ -80,9 +77,8 @@ export class ClaimStorageService {
       const claimValidationQuery = `
         INSERT INTO claim_forge.claim_validations (
           claim_id, original_claim, overall_status, confidence, processing_time_ms,
-          question_analysis, overall_assessment, insurance_insights,
-          research_results, planner_questions, sanity_check_results
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          question_analysis, overall_assessment, insurance_insights
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         RETURNING id
       `;
 
@@ -94,10 +90,7 @@ export class ClaimStorageService {
         0, // Initial processing time
         JSON.stringify([]), // Empty question analysis
         JSON.stringify({}), // Empty overall assessment
-        JSON.stringify({}), // Empty insurance insights
-        JSON.stringify([]), // Empty research results
-        JSON.stringify([]), // Empty planner questions
-        JSON.stringify({}) // Empty sanity check results
+        JSON.stringify({}) // Empty insurance insights
       ]);
 
       const claimValidationId = claimValidationResult.rows[0].id;
@@ -135,9 +128,8 @@ export class ClaimStorageService {
       const claimValidationQuery = `
         INSERT INTO claim_forge.claim_validations (
           claim_id, original_claim, overall_status, confidence, processing_time_ms,
-          question_analysis, overall_assessment, insurance_insights,
-          research_results, planner_questions, sanity_check_results
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          question_analysis, overall_assessment, insurance_insights
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         RETURNING id
       `;
 
@@ -149,10 +141,7 @@ export class ClaimStorageService {
         evaluatorResult.processing_time_ms,
         JSON.stringify(evaluatorResult.question_analysis),
         JSON.stringify(evaluatorResult.overall_assessment),
-        JSON.stringify(evaluatorResult.insurance_insights),
-        JSON.stringify(researchResults),
-        JSON.stringify(plannerQuestions),
-        JSON.stringify(sanityCheckResults)
+        JSON.stringify(evaluatorResult.insurance_insights)
       ]);
 
       const claimValidationId = claimValidationResult.rows[0].id;
@@ -331,9 +320,6 @@ export class ClaimStorageService {
         question_analysis: row.question_analysis,
         overall_assessment: row.overall_assessment,
         insurance_insights: row.insurance_insights,
-        research_results: row.research_results,
-        planner_questions: row.planner_questions,
-        sanity_check_results: row.sanity_check_results,
         created_at: row.created_at,
         updated_at: row.updated_at
       };

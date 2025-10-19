@@ -76,29 +76,30 @@ FOR EACH QUESTION INCLUDE:
 
 GOOGLE DORKING OPERATORS:
   • site:{domain} - ALWAYS include as first part (e.g., site:cms.gov, site:aetna.com)
-  • filetype:pdf - Find policy documents
   • "exact phrases" - Match specific terms exactly
   • (term1 OR term2) - Multiple options
+  • filetype:pdf - Optional, only when specifically looking for policy documents
 
 QUERY PATTERNS BY QUESTION INTENT:
-  • Authorization: site:{domain} filetype:pdf "prior authorization"
-  • Medical Necessity: site:{domain} filetype:pdf "medical necessity"
-  • Bundling/NCCI: site:{domain} filetype:pdf "bundling" OR "ncci"
-  • Coverage: site:{domain} filetype:pdf "coverage determination"
-  • Modifier: site:{domain} filetype:pdf "modifier"
+  • Authorization: site:{domain} "prior authorization" OR site:{domain} filetype:pdf "prior authorization"
+  • Medical Necessity: site:{domain} "medical necessity" OR site:{domain} filetype:pdf "medical necessity"
+  • Bundling/NCCI: site:{domain} "bundling" OR "ncci" OR site:{domain} filetype:pdf "bundling"
+  • Coverage: site:{domain} "coverage determination" OR site:{domain} filetype:pdf "coverage"
+  • Modifier: site:{domain} "modifier" OR site:{domain} filetype:pdf "modifier"
 
 EXAMPLES:
   • Question: "Does Medicare require prior authorization for this?"
-    Query: site:cms.gov filetype:pdf "prior authorization"
+    Query: site:cms.gov "prior authorization" OR site:cms.gov filetype:pdf "prior authorization"
   
   • Question: "Are there bundling restrictions?"
-    Query: site:aetna.com filetype:pdf "bundling" OR "ncci"
+    Query: site:aetna.com "bundling" OR "ncci" OR site:aetna.com filetype:pdf "bundling"
   
   • Question: "What is the medical necessity policy?"
-    Query: site:bcbs.com filetype:pdf "medical necessity"
+    Query: site:bcbs.com "medical necessity" OR site:bcbs.com filetype:pdf "medical necessity"
 
 RULES:
-  • Use site:{domain} + filetype:pdf + "exact phrase"
+  • Use site:{domain} + "exact phrase" as primary query
+  • Add filetype:pdf as secondary query for comprehensive coverage
   • Use quotes around important terms
   • Use OR for multiple relevant terms
   • Keep queries simple and focused
@@ -161,12 +162,7 @@ OUTPUT SHAPE:
       await this.initialize();
     }
 
-    // Skip cache for testing - always generate fresh results
-    // const cacheKey = `planner:${payload.cpt_codes.join(',')}:${payload.icd10_codes.join(',')}:${payload.payer}`;
-    // const cached = await this.redis.redis.get(cacheKey);
-    // if (cached) {
-    //   return JSON.parse(cached);
-    // }
+    // Cache disabled - Redis removed
 
     // Get payer domains for search queries
     const payerDomains = this.payerDomainService.getDomainsForPayer(payload.payer);
@@ -290,8 +286,7 @@ Follow the exact output format and question count requirements specified in the 
         }
       };
 
-      // Skip cache for testing
-      // await this.redis.redis.setex(cacheKey, 1800, JSON.stringify(plannerResult));
+      // Cache disabled - Redis removed
 
       return plannerResult;
     } catch (error) {

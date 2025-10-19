@@ -4,10 +4,12 @@ import * as dotenv from 'dotenv';
 // Load environment variables
 dotenv.config();
 import { FirecrawlResponse } from '../types/claim-types';
+import { AuditLogger } from './audit-logger';
 
 export class FirecrawlService {
   private apiUrl: string;
   private apiKey: string;
+  private auditLogger?: AuditLogger;
 
   constructor() {
     this.apiUrl = process.env.FIRECRAWL_API_URL || 'http://localhost:3002';
@@ -19,18 +21,28 @@ export class FirecrawlService {
   }
 
   /**
+   * Set audit logger for this service instance
+   */
+  setAuditLogger(auditLogger: AuditLogger): void {
+    this.auditLogger = auditLogger;
+  }
+
+  /**
    * Scrape a URL for content
    */
-  async scrapeUrl(url: string): Promise<FirecrawlResponse> {
+  async scrapeUrl(url: string, claimId?: string): Promise<FirecrawlResponse> {
+    const startTime = Date.now();
+    const requestData = {
+      url,
+      formats: ['markdown', 'html'],
+      onlyMainContent: true,
+      removeBase64Images: true,
+    };
+
     try {
       const response: AxiosResponse = await axios.post(
         `${this.apiUrl}/scrape`,
-        {
-          url,
-          formats: ['markdown', 'html'],
-          onlyMainContent: true,
-          removeBase64Images: true,
-        },
+        requestData,
         {
           headers: {
             ...(this.apiKey && { 'Authorization': `Bearer ${this.apiKey}` }),
@@ -40,7 +52,8 @@ export class FirecrawlService {
         }
       );
 
-      return {
+      const processingTime = Date.now() - startTime;
+      const responseData = {
         success: true,
         data: {
           content: response.data.data.content || '',
@@ -52,11 +65,49 @@ export class FirecrawlService {
           },
         },
       };
+
+      // Log successful Firecrawl interaction
+      if (this.auditLogger) {
+        await this.auditLogger.logServiceInteraction(
+          'firecrawl',
+          'scrape_url',
+          requestData,
+          {
+            success: true,
+            contentLength: responseData.data.content.length,
+            markdownLength: responseData.data.markdown.length,
+            metadata: responseData.data.metadata
+          },
+          processingTime,
+          true,
+          undefined,
+          claimId
+        );
+      }
+
+      return responseData;
     } catch (error) {
+      const processingTime = Date.now() - startTime;
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      
+      // Log failed Firecrawl interaction
+      if (this.auditLogger) {
+        await this.auditLogger.logServiceInteraction(
+          'firecrawl',
+          'scrape_url',
+          requestData,
+          { success: false, error: errorMessage },
+          processingTime,
+          false,
+          errorMessage,
+          claimId
+        );
+      }
+
       console.error('Firecrawl scrape error:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: errorMessage,
       };
     }
   }

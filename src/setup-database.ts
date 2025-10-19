@@ -53,8 +53,7 @@ async function setupDatabase() {
     const testClaimValidation = `
       INSERT INTO claim_forge.claim_validations (
         claim_id, original_claim, overall_status, confidence, processing_time_ms,
-        question_analysis, overall_assessment, insurance_insights,
-        research_results, planner_questions, sanity_check_results
+        question_analysis, overall_assessment, insurance_insights
       ) VALUES (
         'TEST-CLAIM-001',
         '{"payer": "Medicare", "cpt_codes": ["99213"], "icd10_codes": ["Z00.00"], "modifiers": [], "place_of_service": "11", "state": "CA", "note_summary": "Office visit for routine checkup"}',
@@ -63,10 +62,7 @@ async function setupDatabase() {
         5000,
         '[{"question_id": "Q1", "question": "Is CPT 99213 covered?", "answer": "Yes, covered under Medicare Part B", "confidence": 0.9, "method": "multi-model", "status": "PASS", "risk_level": "low", "recommendations": ["High confidence - Policy well documented"]}]',
         '{"decision_rationale": "High confidence approval based on policy compliance", "risk_factors": [], "approval_criteria_met": true, "blockers": [], "next_steps": ["Process payment"], "estimated_approval_probability": 95}',
-        '{"payer_compliance": "compliant", "coverage_verification": "verified", "prior_auth_status": "not_required", "coding_compliance": "compliant", "state_regulations": "compliant"}',
-        '[{"question": "Is CPT 99213 covered?", "answer": "Yes, CPT 99213 is covered under Medicare Part B", "confidence": 0.9, "source": "Multi-Model Consensus", "metadata": {"extraction_method": "multi-model", "processing_time": 3000}, "recommendations": ["High confidence - Policy well documented"]}]',
-        '[{"n": 1, "type": "basic", "q": "Is CPT 99213 covered?", "accept_if": ["Coverage confirmed"], "search_queries": ["Medicare coverage 99213"], "risk_flags": {"PA": false, "POS": false, "NCCI": false, "Modifiers": false, "Frequency": false, "Diagnosis": false, "StateSpecific": false, "LOBSpecific": false, "Thresholds": false}}]',
-        '{"is_valid": true, "sanitized_payload": {"payer": "Medicare", "cpt_codes": ["99213"], "icd10_codes": ["Z00.00"], "modifiers": [], "place_of_service": "11", "state": "CA", "note_summary": "Office visit for routine checkup"}, "ssp_prediction": {"specialty": "Internal Medicine", "subspecialty": "General Internal Medicine", "confidence": "high"}, "issues": [], "warnings": [], "cms_ncci_checks": {"bundling_issues": [], "modifier_requirements": [], "frequency_limits": []}, "ai_clinical_validation": {"overall_appropriate": true, "specialty": "Internal Medicine", "subspecialty": "General Internal Medicine", "cpt_validation": [{"code": "99213", "appropriate": true, "confidence": "high", "reasoning": "Appropriate for established patient office visit"}], "icd_validation": [{"code": "Z00.00", "appropriate": true, "confidence": "high", "reasoning": "Appropriate for routine checkup"}], "modifier_validation": [], "place_of_service_validation": {"code": "11", "appropriate": true, "confidence": "high", "reasoning": "Office visit appropriate for POS 11"}, "clinical_concerns": [], "documentation_quality": "Good", "recommendations": ["Documentation appears complete"]}, "policy_check_required": false, "policy_check_details": {}, "validation_issues": [], "cms_ncci_validation": {"is_valid": true, "errors": [], "warnings": [], "passes": [], "risk_score": 0}}'
+        '{"payer_compliance": "compliant", "coverage_verification": "verified", "prior_auth_status": "not_required", "coding_compliance": "compliant", "state_regulations": "compliant"}'
       )
       ON CONFLICT (claim_id) DO NOTHING
       RETURNING id;

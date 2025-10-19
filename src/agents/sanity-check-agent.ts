@@ -127,10 +127,7 @@ Output Format:
 }
 `;
 
-    const tools = [
-      this.createCacheTool(),
-      this.createGetCacheTool(),
-    ];
+    const tools: any[] = [];
 
     this.agent = this.createAgent('Sanity Check Agent', instructions, tools);
   }
@@ -152,16 +149,7 @@ Output Format:
       await this.initialize();
     }
 
-    // Skip cache for testing - always perform fresh validation
-    // const cacheKey = `sanity:${payload.cpt_codes.join(',')}:${payload.icd10_codes.join(',')}`;
-    // const cached = await this.redis.redis.get(cacheKey);
-    // if (cached) {
-    //   const cachedResult = JSON.parse(cached);
-    //   // Still need to perform CMS/NCCI validation
-    //   const validationIssues = await this.cmsNCCIService.validateClaim(payload);
-    //   cachedResult.validation_issues = validationIssues;
-    //   return cachedResult;
-    // }
+    // Cache disabled - Redis removed
 
     // Step 1: AI Clinical Validation
     console.log(`\n   🧠 AI Clinical Validation:`);
@@ -323,8 +311,7 @@ Output Format:
     
     console.log(`\n✅ SANITY CHECK COMPLETE\n`);
 
-      // Skip caching for testing
-      // await this.redis.redis.setex(cacheKey, 3600, JSON.stringify(sanityResult));
+      // Cache disabled - Redis removed
 
     return sanityResult;
   }

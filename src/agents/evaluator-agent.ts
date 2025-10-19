@@ -185,10 +185,34 @@ Consider all confidence levels, conflict analysis, and reviewer recommendations.
       const result = await this.executeAgent(this.agent!, input, {
         model: process.env.EVALUATOR_MODEL,
         temperature: process.env.EVALUATOR_TEMPERATURE ? parseFloat(process.env.EVALUATOR_TEMPERATURE) : undefined,
-        max_tokens: process.env.EVALUATOR_MAX_TOKENS ? parseInt(process.env.EVALUATOR_MAX_TOKENS) : undefined
+        max_tokens: process.env.EVALUATOR_MAX_TOKENS ? parseInt(process.env.EVALUATOR_MAX_TOKENS) : undefined,
+        claimId: claimId
       });
       
       const processingTime = Date.now() - startTime;
+
+      // Log evaluator decision to audit system
+      if (this.auditLogger) {
+        await this.auditLogger.logAuditEvent(
+          'evaluator',
+          'EvaluatorAgent',
+          'make_final_decision',
+          { reviewerResults: reviewerResults.length, questions: questions.length },
+          { 
+            overall_status: result.overall_status || 'REQUIRES_REVIEW',
+            confidence: result.confidence || 'medium',
+            approval_probability: result.overall_assessment?.estimated_approval_probability || 50
+          },
+          { 
+            processing_time_ms: processingTime,
+            decision_rationale: result.overall_assessment?.decision_rationale || 'Evaluation completed'
+          },
+          processingTime,
+          true,
+          undefined,
+          claimId
+        );
+      }
 
       return {
         claim_id: claimId,

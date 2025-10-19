@@ -1,7 +1,7 @@
 import dotenv from 'dotenv';
 import { FirecrawlService } from '../services/firecrawl-service';
 import { GoogleSearchService } from '../services/google-search';
-import { RedisService } from '../services/redis-service';
+// import { RedisService } from '../services/redis-service'; // Removed - Redis disabled
 
 // Load environment variables
 dotenv.config();
@@ -27,8 +27,7 @@ class ServicesTest {
     // Test Google Search Service
     await this.testGoogleSearchService();
 
-    // Test Redis Service
-    await this.testRedisService();
+    // Redis Service removed
 
     // Print summary
     this.printSummary();
@@ -377,208 +376,7 @@ class ServicesTest {
     }
   }
 
-  private async testRedisService(): Promise<void> {
-    console.log('📦 Testing Redis Service...\n');
 
-    // Test 1: Basic connection
-    await this.testRedisConnection();
-
-    // Test 2: Set and get operations
-    await this.testRedisOperations();
-
-    // Test 3: Cache operations
-    await this.testRedisCache();
-
-    console.log('\n' + '-'.repeat(80) + '\n');
-  }
-
-  private async testRedisConnection(): Promise<void> {
-    const startTime = Date.now();
-    console.log('   🔍 Test 1: Redis Connection...');
-
-    try {
-      const redis = new RedisService();
-      
-      // Test basic ping
-      const pong = await redis.redis.ping();
-      const duration = Date.now() - startTime;
-
-      if (pong === 'PONG') {
-        console.log('   ✅ Redis connection successful');
-        console.log(`   - Ping response: ${pong}`);
-        console.log(`   - Duration: ${duration}ms`);
-
-        this.testResults.push({
-          service: 'Redis',
-          test: 'Connection',
-          success: true,
-          duration,
-          result: { ping: pong }
-        });
-      } else {
-        console.log('   ❌ Redis connection failed');
-        console.log(`   - Unexpected ping response: ${pong}`);
-        console.log(`   - Duration: ${duration}ms`);
-
-        this.testResults.push({
-          service: 'Redis',
-          test: 'Connection',
-          success: false,
-          duration,
-          error: `Unexpected ping response: ${pong}`
-        });
-      }
-    } catch (error) {
-      const duration = Date.now() - startTime;
-      console.log(`   ❌ Redis connection failed: ${(error as Error).message}`);
-      console.log(`   - Duration: ${duration}ms`);
-
-      this.testResults.push({
-        service: 'Redis',
-        test: 'Connection',
-        success: false,
-        duration,
-        error: (error as Error).message
-      });
-    }
-  }
-
-  private async testRedisOperations(): Promise<void> {
-    const startTime = Date.now();
-    console.log('   🔍 Test 2: Redis Set/Get Operations...');
-
-    try {
-      const redis = new RedisService();
-      const testKey = 'test:validation:key';
-      const testValue = JSON.stringify({ 
-        test: true, 
-        timestamp: Date.now(),
-        data: 'test validation data'
-      });
-
-      // Set value
-      await redis.redis.set(testKey, testValue);
-      
-      // Get value
-      const retrievedValue = await redis.redis.get(testKey);
-      
-      // Clean up
-      await redis.redis.del(testKey);
-
-      const duration = Date.now() - startTime;
-
-      if (retrievedValue === testValue) {
-        console.log('   ✅ Redis set/get operations successful');
-        console.log(`   - Value set and retrieved correctly`);
-        console.log(`   - Duration: ${duration}ms`);
-
-        this.testResults.push({
-          service: 'Redis',
-          test: 'Set/Get Operations',
-          success: true,
-          duration,
-          result: { valueMatch: true }
-        });
-      } else {
-        console.log('   ❌ Redis set/get operations failed');
-        console.log(`   - Value mismatch`);
-        console.log(`   - Duration: ${duration}ms`);
-
-        this.testResults.push({
-          service: 'Redis',
-          test: 'Set/Get Operations',
-          success: false,
-          duration,
-          error: 'Value mismatch'
-        });
-      }
-    } catch (error) {
-      const duration = Date.now() - startTime;
-      console.log(`   ❌ Redis set/get operations failed: ${(error as Error).message}`);
-      console.log(`   - Duration: ${duration}ms`);
-
-      this.testResults.push({
-        service: 'Redis',
-        test: 'Set/Get Operations',
-        success: false,
-        duration,
-        error: (error as Error).message
-      });
-    }
-  }
-
-  private async testRedisCache(): Promise<void> {
-    const startTime = Date.now();
-    console.log('   🔍 Test 3: Redis Cache Operations...');
-
-    try {
-      const redis = new RedisService();
-      const cacheKey = 'test:validation:cache';
-      const cacheValue = JSON.stringify({
-        claim_id: 'test_123',
-        validation_result: { valid: true, risk_score: 10 },
-        timestamp: Date.now()
-      });
-      const ttl = 60; // 60 seconds
-
-      // Set with TTL
-      await redis.redis.setex(cacheKey, ttl, cacheValue);
-      
-      // Get cached value
-      const cachedValue = await redis.redis.get(cacheKey);
-      
-      // Check TTL
-      const remainingTtl = await redis.redis.ttl(cacheKey);
-      
-      // Clean up
-      await redis.redis.del(cacheKey);
-
-      const duration = Date.now() - startTime;
-
-      if (cachedValue === cacheValue && remainingTtl > 0) {
-        console.log('   ✅ Redis cache operations successful');
-        console.log(`   - Value cached and retrieved correctly`);
-        console.log(`   - TTL: ${remainingTtl} seconds`);
-        console.log(`   - Duration: ${duration}ms`);
-
-        this.testResults.push({
-          service: 'Redis',
-          test: 'Cache Operations',
-          success: true,
-          duration,
-          result: { 
-            valueMatch: true, 
-            ttl: remainingTtl 
-          }
-        });
-      } else {
-        console.log('   ❌ Redis cache operations failed');
-        console.log(`   - Value match: ${cachedValue === cacheValue}`);
-        console.log(`   - TTL: ${remainingTtl}`);
-        console.log(`   - Duration: ${duration}ms`);
-
-        this.testResults.push({
-          service: 'Redis',
-          test: 'Cache Operations',
-          success: false,
-          duration,
-          error: `Value match: ${cachedValue === cacheValue}, TTL: ${remainingTtl}`
-        });
-      }
-    } catch (error) {
-      const duration = Date.now() - startTime;
-      console.log(`   ❌ Redis cache operations failed: ${(error as Error).message}`);
-      console.log(`   - Duration: ${duration}ms`);
-
-      this.testResults.push({
-        service: 'Redis',
-        test: 'Cache Operations',
-        success: false,
-        duration,
-        error: (error as Error).message
-      });
-    }
-  }
 
   private printSummary(): void {
     console.log('📊 SERVICES TEST SUMMARY');
@@ -638,15 +436,11 @@ async function main() {
       case 'google':
         await testSuite['testGoogleSearchService']();
         break;
-      case 'redis':
-        await testSuite['testRedisService']();
-        break;
       default:
-        console.log('Usage: npm run test:services [all|firecrawl|google|redis]');
+        console.log('Usage: npm run test:services [all|firecrawl|google]');
         console.log('  all      - Run all service tests');
         console.log('  firecrawl - Run only Firecrawl service tests');
         console.log('  google   - Run only Google Search service tests');
-        console.log('  redis    - Run only Redis service tests');
     }
   } catch (error) {
     console.error('Service test suite error:', error);

@@ -1,8 +1,9 @@
 import { Agent, run, Tool } from '@openai/agents';
 import { FirecrawlService } from '../services/firecrawl-service';
 import { GoogleSearchService } from '../services/google-search';
-import { RedisService } from '../services/redis-service';
 import { OpenRouterService } from '../services/openrouter-service';
+import { AuditLogger } from '../services/audit-logger';
+import { Pool } from 'pg';
 import dotenv from 'dotenv';
 
 // Load environment variables
@@ -11,14 +12,20 @@ dotenv.config();
 export abstract class BaseAgent {
   protected firecrawl: FirecrawlService;
   protected googleSearch: GoogleSearchService;
-  protected redis: RedisService;
   protected openRouter: OpenRouterService;
+  protected auditLogger?: AuditLogger;
 
   constructor() {
     this.firecrawl = new FirecrawlService();
     this.googleSearch = new GoogleSearchService();
-    this.redis = new RedisService();
     this.openRouter = new OpenRouterService();
+  }
+
+  /**
+   * Set audit logger for this agent instance
+   */
+  setAuditLogger(auditLogger: AuditLogger): void {
+    this.auditLogger = auditLogger;
   }
 
   /**
@@ -51,12 +58,17 @@ export abstract class BaseAgent {
     model?: string;
     temperature?: number;
     max_tokens?: number;
+    claimId?: string;
   }): Promise<any> {
+    const startTime = Date.now();
+    const model = options?.model || process.env.BASE_AGENT_MODEL || 'gpt-4o-mini';
+    const agentName = agent.name || 'Unknown Agent';
+    
     try {
       // Use OpenRouter for agent execution instead of direct OpenAI
       const response = await this.openRouter.generateResponse(
         input,
-        options?.model || process.env.BASE_AGENT_MODEL || 'gpt-4o-mini',
+        model,
         {
           temperature: options?.temperature || parseFloat(process.env.BASE_AGENT_TEMPERATURE || '0.1'),
           max_tokens: options?.max_tokens || parseInt(process.env.BASE_AGENT_MAX_TOKENS || '2000'),
@@ -64,6 +76,7 @@ export abstract class BaseAgent {
         }
       );
 
+      const processingTime = Date.now() - startTime;
       let responseText = response || '{}';
       
       // Remove markdown code blocks if present
@@ -78,10 +91,16 @@ export abstract class BaseAgent {
       }
       
       // Try to parse JSON with better error handling
+      let parsedResult: any;
+      let parseSuccess = true;
+      let parseError: any = null;
+      
       try {
-        return JSON.parse(responseText);
-      } catch (parseError) {
-        console.error('JSON parse error:', parseError);
+        parsedResult = JSON.parse(responseText);
+      } catch (parseErr) {
+        parseSuccess = false;
+        parseError = parseErr;
+        console.error('JSON parse error:', parseErr);
         console.error('Raw response:', responseText.substring(0, 500) + '...');
         
         // Try to fix common JSON issues
@@ -94,17 +113,52 @@ export abstract class BaseAgent {
         
         // Try parsing the fixed version
         try {
-          return JSON.parse(fixedText);
+          parsedResult = JSON.parse(fixedText);
+          parseSuccess = true;
         } catch (secondError) {
           console.error('Second JSON parse error:', secondError);
           // Return a default structure if all parsing fails
-          return {
+          parsedResult = {
             error: 'Failed to parse agent response',
             raw_response: responseText.substring(0, 200)
           };
         }
       }
+
+      // Log LLM interaction to audit system
+      if (this.auditLogger) {
+        await this.auditLogger.logLLMInteraction(
+          agentName,
+          model,
+          input,
+          responseText,
+          processingTime,
+          parseSuccess,
+          parseError ? parseError.message : undefined,
+          undefined, // tokens_used - not available from OpenRouter
+          options?.claimId
+        );
+      }
+
+      return parsedResult;
     } catch (error) {
+      const processingTime = Date.now() - startTime;
+      
+      // Log failed LLM interaction
+      if (this.auditLogger) {
+        await this.auditLogger.logLLMInteraction(
+          agentName,
+          model,
+          input,
+          '',
+          processingTime,
+          false,
+          error instanceof Error ? error.message : 'Unknown error',
+          undefined,
+          options?.claimId
+        );
+      }
+      
       console.error('Error executing agent:', error);
       throw error;
     }
@@ -213,60 +267,7 @@ export abstract class BaseAgent {
     };
   }
 
-  /**
-   * Tool: Cache data in Redis
-   */
-  protected createCacheTool() {
-    return {
-      type: 'function',
-      function: {
-        name: 'cache_data',
-        description: 'Cache data in Redis for future use',
-        parameters: {
-          type: 'object',
-          properties: {
-            key: {
-              type: 'string',
-              description: 'Cache key'
-            },
-            value: {
-              type: 'string',
-              description: 'Data to cache (JSON string)'
-            },
-            ttl: {
-              type: 'number',
-              description: 'Time to live in seconds (default: 3600)',
-              default: 3600
-            }
-          },
-          required: ['key', 'value']
-        }
-      }
-    };
-  }
 
-  /**
-   * Tool: Get cached data from Redis
-   */
-  protected createGetCacheTool() {
-    return {
-      type: 'function',
-      function: {
-        name: 'get_cached_data',
-        description: 'Get cached data from Redis',
-        parameters: {
-          type: 'object',
-          properties: {
-            key: {
-              type: 'string',
-              description: 'Cache key to retrieve'
-            }
-          },
-          required: ['key']
-        }
-      }
-    };
-  }
 
   /**
    * Handle tool calls
@@ -282,13 +283,6 @@ export abstract class BaseAgent {
       case 'firecrawl_request':
         return await this.makeFirecrawlRequest(args.url, args.formats, args.onlyMainContent);
       
-      case 'cache_data':
-        await this.redis.redis.setex(args.key, args.ttl || 3600, args.value);
-        return { success: true, message: 'Data cached successfully' };
-      
-      case 'get_cached_data':
-        const cached = await this.redis.redis.get(args.key);
-        return cached ? JSON.parse(cached) : null;
       
       default:
         throw new Error(`Unknown tool: ${toolName}`);

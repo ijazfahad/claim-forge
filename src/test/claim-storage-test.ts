@@ -252,8 +252,6 @@ export class ClaimStorageTestSuite {
         console.log(`   📋 Status: ${claimValidation.overall_status}`);
         console.log(`   📈 Confidence: ${claimValidation.confidence}`);
         console.log(`   📝 Questions: ${claimValidation.question_analysis.length}`);
-        console.log(`   🔬 Research Results: ${claimValidation.research_results.length}`);
-        console.log(`   📋 Planner Questions: ${claimValidation.planner_questions.length}`);
       } else {
         console.log('   ⚠️  No claim validation found (expected for test)');
       }
